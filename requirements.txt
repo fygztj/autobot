@@ -1,0 +1,25 @@
+# 核心依赖
+uiautomator2>=3.1.0          # Android 设备自动化控制
+opencv-python>=4.8.0         # 图像处理
+Pillow>=10.0.0               # 图像库
+numpy>=1.24.0                # 数值计算
+
+# OCR 文字识别
+paddleocr>=2.7.0             # 中文 OCR 识别
+paddlepaddle>=2.5.0          # PaddlePaddle 深度学习框架
+
+# Web 框架
+fastapi>=0.104.0             # Web API 框架
+uvicorn>=0.24.0              # ASGI 服务器
+websockets>=12.0             # WebSocket 支持
+jinja2>=3.1.0                # 模板引擎
+
+# 任务调度
+apscheduler>=3.10.0          # 定时任务调度
+
+# 数据存储
+aiofiles>=23.2.0             # 异步文件操作
+
+# 工具
+loguru>=0.7.0                # 日志
+pyyaml>=6.0                  # YAML 配置解析

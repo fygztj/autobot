@@ -1,0 +1,118 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>autobot - 移动端自动化机器人</title>
+    <link rel="stylesheet" href="/static/css/style.css">
+</head>
+<body>
+    <!-- 顶部导航 -->
+    <div class="header">
+        <h1>🤖 autobot</h1>
+        <div class="status-bar">
+            <span class="status-badge">设备: <b id="deviceCount">0</b></span>
+            <span class="status-badge">空闲: <b id="idleCount">0</b></span>
+            <span class="status-badge">任务: <b id="taskCount">0</b></span>
+        </div>
+    </div>
+
+    <div class="container">
+        <div class="panel-grid">
+            <!-- 设备列表 -->
+            <div class="panel">
+                <div class="panel-header">
+                    <h3>已连接设备</h3>
+                    <button class="btn btn-sm btn-default" onclick="refreshDevices()">刷新</button>
+                </div>
+                <div class="panel-body device-list" id="deviceList">
+                    <div class="empty-state">加载中...</div>
+                </div>
+            </div>
+
+            <!-- 任务列表 -->
+            <div class="panel">
+                <div class="panel-header">
+                    <h3>任务列表</h3>
+                    <button class="btn btn-sm btn-default" onclick="refreshTasks()">刷新</button>
+                </div>
+                <div class="panel-body" id="taskList">
+                    <div class="empty-state">加载中...</div>
+                </div>
+            </div>
+
+            <!-- 创建任务 -->
+            <div class="panel panel-full">
+                <div class="panel-header">
+                    <h3>创建新任务</h3>
+                </div>
+                <div class="panel-body">
+                    <div style="display:grid; grid-template-columns:1fr 1fr; gap:16px;">
+                        <div>
+                            <div class="form-group">
+                                <label>任务名称 *</label>
+                                <input class="form-control" id="taskName" placeholder="例如：每天上午刷抖音10分钟"/>
+                            </div>
+                            <div class="form-group">
+                                <label>目标应用</label>
+                                <select class="form-control" id="taskApp">
+                                    <option value="">通用操作</option>
+                                    <option value="wechat">微信</option>
+                                    <option value="douyin">抖音</option>
+                                    <option value="xiaohongshu">小红书</option>
+                                </select>
+                            </div>
+                            <div class="form-group">
+                                <label>描述</label>
+                                <textarea class="form-control" id="taskDesc" placeholder="任务描述（可选）"></textarea>
+                            </div>
+                        </div>
+                        <div>
+                            <div class="form-group">
+                                <label>定时执行</label>
+                                <select class="form-control" id="scheduleType">
+                                    <option value="">手动执行</option>
+                                    <option value="cron">Cron 定时</option>
+                                    <option value="interval">间隔执行</option>
+                                </select>
+                            </div>
+                            <div id="cronConfig" style="display:none">
+                                <div class="form-group">
+                                    <label>Cron 规则</label>
+                                    <div class="schedule-config">
+                                        <span>每天</span>
+                                        <input class="form-control" id="cronHour" placeholder="时" value="9"/>
+                                        <span>:</span>
+                                        <input class="form-control" id="cronMinute" placeholder="分" value="0"/>
+                                    </div>
+                                </div>
+                            </div>
+                            <div id="intervalConfig" style="display:none">
+                                <div class="form-group">
+                                    <label>间隔执行</label>
+                                    <div class="schedule-config">
+                                        <span>每</span>
+                                        <input class="form-control" id="intervalMinutes" value="30"/>
+                                        <span>分钟执行一次</span>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+
+                    <!-- 操作步骤 -->
+                    <div class="form-group" style="margin-top:12px">
+                        <label>操作步骤</label>
+                        <div id="actionList"></div>
+                        <button class="btn btn-sm btn-default" onclick="addAction()" style="margin-top:8px">+ 添加步骤</button>
+                    </div>
+
+                    <button class="btn btn-primary" onclick="createTask()" style="margin-top:12px">创建任务</button>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <script src="/static/js/app.js"></script>
+</body>
+</html>
