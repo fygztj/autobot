@@ -1,33 +1,33 @@
 """
 屏幕截图模块
+支持 Android 和 iOS 双平台
 """
 import os
 import time
-from typing import Optional
+from typing import Optional, Union
 from PIL import Image
 from loguru import logger
 
 from backend.config import config
-from backend.adb_client import ADBClient
 
 
 class Screenshot:
     """设备截图管理器"""
 
-    def __init__(self, adb: ADBClient):
-        self.adb = adb
+    def __init__(self, client: Union['ADBClient', 'iOSClient']):
+        self.client = client
         self._current_image: Optional[Image.Image] = None
         self._current_path: str = ""
 
     def capture(self) -> Optional[Image.Image]:
         """抓取当前屏幕截图并返回 PIL Image"""
         timestamp = int(time.time() * 1000)
-        filename = f"{self.adb.serial}_{timestamp}.png"
+        filename = f"{self.client.serial}_{timestamp}.png"
         path = os.path.join(config.SCREENSHOT_DIR, filename)
 
-        ok = self.adb.screenshot(path)
+        ok = self.client.screenshot(path)
         if not ok:
-            logger.error(f"[{self.adb.serial}] 截图失败")
+            logger.error(f"[{self.client.serial}] 截图失败")
             return None
 
         self._current_path = path

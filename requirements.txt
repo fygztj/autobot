@@ -1,5 +1,6 @@
 # 核心依赖
 uiautomator2>=3.1.0          # Android 设备自动化控制
+tidevice>=1.6.0              # iOS 设备自动化控制
 opencv-python>=4.8.0         # 图像处理
 Pillow>=10.0.0               # 图像库
 numpy>=1.24.0                # 数值计算

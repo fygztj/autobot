@@ -48,14 +48,20 @@ async function refreshDevices() {
         const data = await API.get('/api/devices');
         const container = document.getElementById('deviceList');
         if (!data.devices.length) {
-            container.innerHTML = '<div class="empty-state">暂无已连接设备<br>请通过 USB 或 TCP 连接 Android 设备</div>';
+            container.innerHTML = '<div class="empty-state">暂无已连接设备<br>请通过 USB 连接 Android 或 iOS 设备</div>';
             return;
         }
         container.innerHTML = data.devices.map(d => `
             <div class="device-card">
-                <div class="model">${d.info.model || '未知设备'}</div>
+                <div class="model">
+                    <span class="os-badge os-${d.os_type}">${d.os_type}</span>
+                    ${d.info.model || '未知设备'}
+                </div>
                 <div class="serial">${d.serial}</div>
-                <div>Android ${d.info.android_version || '?'} | ${d.info.screen_width || '?'}x${d.info.screen_height || '?'}</div>
+                <div>
+                    ${d.os_type === 'Android' ? `Android ${d.info.android_version || '?'}` : `iOS ${d.info.os_version || '?'}`}
+                    | ${d.info.screen_width || '?'}x${d.info.screen_height || '?'}
+                </div>
                 <div class="status ${d.is_busy ? 'status-busy' : 'status-idle'}">
                     ${d.is_busy ? '● 忙碌' : '● 空闲'}
                 </div>

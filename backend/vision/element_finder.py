@@ -1,13 +1,13 @@
 """
 UI 元素查找器 - 结合 OCR 和图像匹配的复合查找
+支持 Android 和 iOS 双平台
 """
 import time
-from typing import Optional, Tuple, List
+from typing import Optional, Tuple, List, Union
 from PIL import Image
 from loguru import logger
 
 from backend.config import config
-from backend.adb_client import ADBClient
 from backend.vision.ocr import ocr_engine, OCRResult
 from backend.vision.image_match import image_matcher
 from backend.actions.screenshot import Screenshot
@@ -19,9 +19,9 @@ class ElementFinder:
     先尝试 OCR 识别文字点击，再尝试图像匹配
     """
 
-    def __init__(self, adb: ADBClient):
-        self.adb = adb
-        self.screenshot = Screenshot(adb)
+    def __init__(self, client: Union['ADBClient', 'iOSClient']):
+        self.client = client
+        self.screenshot = Screenshot(client)
 
     # ================== 文字查找 ==================
 
@@ -62,7 +62,7 @@ class ElementFinder:
         """在当前屏幕上查找模板图片位置"""
         timeout = timeout or config.DEFAULT_WAIT_TIMEOUT
         return image_matcher.wait_for_template(
-            self.adb, template_path, timeout=timeout
+            self.client, template_path, timeout=timeout
         )
 
     # ================== 复合点击方法 ==================
@@ -73,7 +73,7 @@ class ElementFinder:
         if result:
             cx, cy = result.center
             logger.info(f"点击文字 '{result.text}' @ ({cx}, {cy})")
-            self.adb.human_tap(cx, cy)
+            self.client.human_tap(cx, cy)
             return True
         logger.warning(f"未找到文字: {keyword}")
         return False
@@ -84,7 +84,7 @@ class ElementFinder:
         if result:
             cx, cy, conf = result
             logger.info(f"点击图片 {template_path} @ ({cx}, {cy}), conf={conf:.2f}")
-            self.adb.human_tap(cx, cy)
+            self.client.human_tap(cx, cy)
             return True
         logger.warning(f"未找到图片: {template_path}")
         return False
@@ -122,7 +122,7 @@ class ElementFinder:
         """滚动直到找到指定文字"""
         timeout = timeout or config.DEFAULT_WAIT_TIMEOUT
         start = time.time()
-        screen_w, screen_h = self.adb.get_screen_size()
+        screen_w, screen_h = self.client.get_screen_size()
 
         scrolls = 0
         while scrolls < max_scrolls and time.time() - start < timeout:
@@ -134,9 +134,9 @@ class ElementFinder:
             # 滚动
             mid_x = screen_w // 2
             if direction == "up":
-                self.adb.human_swipe(mid_x, screen_h * 3 // 4, mid_x, screen_h // 4)
+                self.client.human_swipe(mid_x, screen_h * 3 // 4, mid_x, screen_h // 4)
             elif direction == "down":
-                self.adb.human_swipe(mid_x, screen_h // 4, mid_x, screen_h * 3 // 4)
+                self.client.human_swipe(mid_x, screen_h // 4, mid_x, screen_h * 3 // 4)
             scrolls += 1
             time.sleep(0.5)
 

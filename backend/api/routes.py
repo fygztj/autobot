@@ -74,6 +74,7 @@ async def list_devices():
     for d in device_manager.get_all_devices():
         devices.append({
             "serial": d.serial,
+            "os_type": d.os_type,
             "info": d.info,
             "is_busy": d.is_busy,
             "current_task_id": d.current_task_id,
@@ -98,7 +99,7 @@ async def get_screenshot(serial: str):
     if device is None:
         raise HTTPException(status_code=404, detail="设备不存在")
 
-    ss = Screenshot(device.adb)
+    ss = Screenshot(device.client)
     img = ss.capture()
     if img is None:
         raise HTTPException(status_code=500, detail="截图失败")
@@ -116,7 +117,7 @@ async def get_device_ocr(serial: str):
     if device is None:
         raise HTTPException(status_code=404, detail="设备不存在")
 
-    ss = Screenshot(device.adb)
+    ss = Screenshot(device.client)
     img = ss.capture()
     if img is None:
         raise HTTPException(status_code=500, detail="截图失败")
@@ -142,9 +143,9 @@ async def device_action(serial: str, action: dict):
     from backend.actions.touch import TouchController
     from backend.vision.element_finder import ElementFinder
 
-    adb = device.adb
-    touch = TouchController(adb)
-    finder = ElementFinder(adb)
+    client = device.client
+    touch = TouchController(client)
+    finder = ElementFinder(client)
 
     action_type = action.get("type", "")
     params = action.get("params", {})
@@ -172,9 +173,15 @@ async def device_action(serial: str, action: dict):
         elif action_type == "tap_text":
             finder.click_text(params.get("text", ""))
         elif action_type == "start_app":
-            adb.start_app(params.get("package", ""))
+            if device.os_type == "Android":
+                client.start_app(params.get("package", ""))
+            else:
+                client.start_app(params.get("bundle_id", params.get("package", "")))
         elif action_type == "stop_app":
-            adb.stop_app(params.get("package", ""))
+            if device.os_type == "Android":
+                client.stop_app(params.get("package", ""))
+            else:
+                client.stop_app(params.get("bundle_id", params.get("package", "")))
         elif action_type == "wait":
             touch.wait(params.get("seconds", 1.0))
         else:

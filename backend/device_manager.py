@@ -1,5 +1,6 @@
 """
 设备管理器 - 管理多台设备连接与生命周期
+支持 Android 和 iOS 双平台
 """
 import subprocess
 import threading
@@ -9,14 +10,21 @@ from loguru import logger
 
 from backend.config import config
 from backend.adb_client import ADBClient
+from backend.ios_client import iOSClient
 
 
 class Device:
     """表示一台被管理的设备"""
 
-    def __init__(self, serial: str):
-        self.serial = serial
-        self.adb = ADBClient(serial)
+    def __init__(self, identifier: str, os_type: str = "Android"):
+        self.serial = identifier
+        self.os_type = os_type  # "Android" 或 "iOS"
+
+        if os_type == "Android":
+            self.client = ADBClient(identifier)
+        else:
+            self.client = iOSClient(identifier)
+
         self.info: dict = {}
         self.is_busy: bool = False  # 是否正在执行任务
         self.current_task_id: Optional[str] = None
@@ -24,11 +32,12 @@ class Device:
 
     def refresh_info(self):
         """刷新设备信息"""
-        self.info = self.adb.get_info()
+        self.info = self.client.get_info()
+        self.info["os_type"] = self.os_type
 
     def __repr__(self):
         model = self.info.get("model", "unknown")
-        return f"Device({model} [{self.serial}])"
+        return f"Device({self.os_type}:{model} [{self.serial}])"
 
 
 class DeviceManager:
@@ -55,8 +64,8 @@ class DeviceManager:
 
     # ================== 设备发现 ==================
 
-    def scan_devices(self) -> List[str]:
-        """扫描当前连接的 ADB 设备，返回序列号列表"""
+    def _scan_android_devices(self) -> List[str]:
+        """扫描 Android 设备"""
         try:
             result = subprocess.run(
                 [config.ADB_PATH, "devices"],
@@ -70,31 +79,67 @@ class DeviceManager:
                     serials.append(parts[0])
             return serials
         except Exception as e:
-            logger.error(f"扫描设备失败: {e}")
+            logger.debug(f"扫描 Android 设备失败: {e}")
             return []
+
+    def _scan_ios_devices(self) -> List[str]:
+        """扫描 iOS 设备"""
+        try:
+            result = subprocess.run(
+                ["tidevice", "list"],
+                capture_output=True, text=True, timeout=5
+            )
+            lines = result.stdout.strip().split("\n")
+            udids = []
+            for line in lines:
+                line = line.strip()
+                if line:
+                    udids.append(line)
+            return udids
+        except FileNotFoundError:
+            logger.debug("tidevice 未安装，无法扫描 iOS 设备")
+            return []
+        except Exception as e:
+            logger.debug(f"扫描 iOS 设备失败: {e}")
+            return []
+
+    def scan_devices(self) -> List[Dict[str, str]]:
+        """扫描当前连接的所有设备，返回 [{id, os_type}] 列表"""
+        devices = []
+        android_devices = self._scan_android_devices()
+        for serial in android_devices:
+            devices.append({"id": serial, "os_type": "Android"})
+        ios_devices = self._scan_ios_devices()
+        for udid in ios_devices:
+            devices.append({"id": udid, "os_type": "iOS"})
+        return devices
 
     def refresh(self):
         """刷新设备列表，处理连接/断开"""
-        current_serials = self.scan_devices()
+        current_devices = self.scan_devices()
+        current_ids = {d["id"] for d in current_devices}
+
         with self._lock:
-            known_serials = set(self._devices.keys())
-            new_serials = set(current_serials)
+            known_ids = set(self._devices.keys())
 
             # 新增设备
-            for serial in new_serials - known_serials:
-                logger.info(f"发现新设备: {serial}")
-                device = Device(serial)
-                device.refresh_info()
-                self._devices[serial] = device
-                if self._on_device_connected:
-                    self._on_device_connected(serial)
+            for device_info in current_devices:
+                dev_id = device_info["id"]
+                dev_os = device_info["os_type"]
+                if dev_id not in known_ids:
+                    logger.info(f"发现新设备: {dev_os} {dev_id}")
+                    device = Device(dev_id, dev_os)
+                    device.refresh_info()
+                    self._devices[dev_id] = device
+                    if self._on_device_connected:
+                        self._on_device_connected(dev_id)
 
             # 断开设备
-            for serial in known_serials - new_serials:
-                logger.info(f"设备断开: {serial}")
-                del self._devices[serial]
+            for dev_id in known_ids - current_ids:
+                logger.info(f"设备断开: {dev_id}")
+                del self._devices[dev_id]
                 if self._on_device_disconnected:
-                    self._on_device_disconnected(serial)
+                    self._on_device_disconnected(dev_id)
 
     def start_scan(self):
         """启动持续扫描线程"""

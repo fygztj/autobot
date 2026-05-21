@@ -1,12 +1,12 @@
 """
 触控操作控制器 - 封装所有设备触控操作
+支持 Android 和 iOS 双平台
 """
 import time
 import random
-from typing import Tuple
+from typing import Tuple, Union
 from loguru import logger
 
-from backend.adb_client import ADBClient
 from backend.config import config
 
 
@@ -16,25 +16,25 @@ class TouchController:
     所有坐标操作均为相对坐标（0.0 ~ 1.0），内部自动转为绝对坐标
     """
 
-    # Android 常用按键码
-    KEY_BACK = 4
-    KEY_HOME = 3
-    KEY_MENU = 82
-    KEY_APP_SWITCH = 187
-    KEY_ENTER = 66
-    KEY_DEL = 67
-    KEY_VOLUME_UP = 24
-    KEY_VOLUME_DOWN = 25
-    KEY_POWER = 26
+    # 按键码（兼容双平台）
+    KEY_BACK = "back"
+    KEY_HOME = "home"
+    KEY_MENU = "menu"
+    KEY_APP_SWITCH = "app_switch"
+    KEY_ENTER = "enter"
+    KEY_DEL = "del"
+    KEY_VOLUME_UP = "volumeUp"
+    KEY_VOLUME_DOWN = "volumeDown"
+    KEY_POWER = "power"
 
-    def __init__(self, adb: ADBClient):
-        self.adb = adb
+    def __init__(self, client: Union['ADBClient', 'iOSClient']):
+        self.client = client
         self._screen_w = 0
         self._screen_h = 0
         self._init_screen_size()
 
     def _init_screen_size(self):
-        self._screen_w, self._screen_h = self.adb.get_screen_size()
+        self._screen_w, self._screen_h = self.client.get_screen_size()
 
     def _to_absolute(self, x: float, y: float) -> Tuple[int, int]:
         """相对坐标转绝对坐标"""
@@ -55,9 +55,9 @@ class TouchController:
         """
         ax, ay = self._to_absolute(x, y)
         if human_like:
-            self.adb.human_tap(ax, ay)
+            self.client.human_tap(ax, ay)
         else:
-            self.adb.tap(ax, ay)
+            self.client.tap(ax, ay)
         logger.debug(f"点击: ({ax}, {ay})")
 
     def tap_center(self, human_like: bool = True):
@@ -69,7 +69,7 @@ class TouchController:
     def long_press(self, x: float, y: float, duration_ms: int = 1000):
         """长按"""
         ax, ay = self._to_absolute(x, y)
-        self.adb.long_press(ax, ay, duration_ms)
+        self.client.long_press(ax, ay, duration_ms)
         logger.debug(f"长按: ({ax}, {ay}) {duration_ms}ms")
 
     # ================== 滑动 ==================
@@ -81,9 +81,9 @@ class TouchController:
         fx, fy = self._to_absolute(from_x, from_y)
         tx, ty = self._to_absolute(to_x, to_y)
         if human_like:
-            self.adb.human_swipe(fx, fy, tx, ty)
+            self.client.human_swipe(fx, fy, tx, ty)
         else:
-            self.adb.swipe(fx, fy, tx, ty)
+            self.client.swipe(fx, fy, tx, ty)
 
     def swipe_up(self, distance: float = 0.5, human_like: bool = True):
         """向上滑动（页面向上滚）"""
@@ -110,34 +110,34 @@ class TouchController:
     def type_text(self, text: str, human_like: bool = True):
         """输入文本"""
         if human_like:
-            self.adb.human_type(text)
+            self.client.human_type(text)
         else:
-            self.adb.input_text(text)
+            self.client.input_text(text)
         logger.debug(f"输入: {text}")
 
     def clear_text(self, count: int = 50):
         """清空输入框"""
         for _ in range(count):
-            self.adb.input_keyevent(self.KEY_DEL)
+            self.client.input_keyevent(self.KEY_DEL)
             time.sleep(0.005)
 
     # ================== 按键 ==================
 
     def press_back(self):
         """返回键"""
-        self.adb.input_keyevent(self.KEY_BACK)
+        self.client.input_keyevent(self.KEY_BACK)
 
     def press_home(self):
         """Home 键"""
-        self.adb.input_keyevent(self.KEY_HOME)
+        self.client.input_keyevent(self.KEY_HOME)
 
     def press_enter(self):
         """回车键"""
-        self.adb.input_keyevent(self.KEY_ENTER)
+        self.client.input_keyevent(self.KEY_ENTER)
 
     def press_app_switch(self):
         """多任务切换键"""
-        self.adb.input_keyevent(self.KEY_APP_SWITCH)
+        self.client.input_keyevent(self.KEY_APP_SWITCH)
 
     # ================== 等待 ==================
 
