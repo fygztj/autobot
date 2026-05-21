@@ -27,6 +27,8 @@ class TaskCreateRequest(BaseModel):
     actions: List[dict] = []
     schedule: dict = None
     target_devices: List[str] = []
+    is_advanced: bool = False
+    advanced_config: dict = None
 
 
 class TaskUpdateRequest(BaseModel):
@@ -37,6 +39,8 @@ class TaskUpdateRequest(BaseModel):
     schedule: dict = None
     target_devices: List[str] = None
     enabled: bool = None
+    is_advanced: bool = None
+    advanced_config: dict = None
 
 
 class RunTaskRequest(BaseModel):
@@ -223,6 +227,8 @@ async def create_task(req: TaskCreateRequest):
         actions=req.actions,
         schedule=req.schedule or {},
         target_devices=req.target_devices,
+        is_advanced=req.is_advanced,
+        advanced_config=req.advanced_config or {},
     )
     task_store.add(task)
     # 如果有定时规则，添加到调度器
@@ -252,6 +258,11 @@ async def update_task(task_id: str, req: TaskUpdateRequest):
         task.target_devices = req.target_devices
     if req.enabled is not None:
         task.enabled = req.enabled
+    if req.is_advanced is not None:
+        task.is_advanced = req.is_advanced
+    if req.advanced_config is not None:
+        from backend.apps.advanced_config import AdvancedTaskConfig
+        task.advanced_config = AdvancedTaskConfig.from_dict(req.advanced_config)
 
     task_store.update(task)
     task_scheduler.refresh_task(task.task_id)

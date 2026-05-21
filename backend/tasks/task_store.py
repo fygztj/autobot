@@ -4,11 +4,12 @@
 import json
 import os
 import threading
-from typing import List, Optional, Dict
+from typing import List, Optional, Dict, Any
 from datetime import datetime
 from loguru import logger
 
 from backend.config import config
+from backend.apps.advanced_config import AdvancedTaskConfig
 
 
 class TaskDefinition:
@@ -29,6 +30,14 @@ class TaskDefinition:
         self.run_count: int = kwargs.get("run_count", 0)
         self.success_count: int = kwargs.get("success_count", 0)
         self.fail_count: int = kwargs.get("fail_count", 0)
+        
+        # 高级任务配置
+        self.is_advanced: bool = kwargs.get("is_advanced", False)
+        advanced_data = kwargs.get("advanced_config", {})
+        if advanced_data:
+            self.advanced_config = AdvancedTaskConfig.from_dict(advanced_data)
+        else:
+            self.advanced_config = AdvancedTaskConfig()
 
     def to_dict(self) -> dict:
         return {
@@ -46,6 +55,8 @@ class TaskDefinition:
             "run_count": self.run_count,
             "success_count": self.success_count,
             "fail_count": self.fail_count,
+            "is_advanced": self.is_advanced,
+            "advanced_config": self.advanced_config.to_dict(),
         }
 
     @classmethod

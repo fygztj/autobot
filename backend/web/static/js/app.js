@@ -43,6 +43,54 @@ function toast(msg, type = 'info') {
 
 // ======================= 设备面板 =======================
 
+// 切换任务模式
+function switchTaskMode() {
+    const isAdvanced = document.getElementById('advancedMode').checked;
+    document.getElementById('normalTaskSection').style.display = isAdvanced ? 'none' : 'block';
+    document.getElementById('advancedTaskSection').style.display = isAdvanced ? 'block' : 'none';
+}
+
+// 解析高级任务配置
+function getAdvancedConfig() {
+    return {
+        app: document.getElementById('advApp').value,
+        topics: document.getElementById('advTopics').value.split('\n').map(t => t.trim()).filter(t => t),
+        like_config: {
+            enabled: document.getElementById('advLikeEnabled').checked,
+            rate: parseFloat(document.getElementById('advLikeRate').value) || 0
+        },
+        comment_config: {
+            enabled: document.getElementById('advCommentEnabled').checked,
+            rate: parseFloat(document.getElementById('advCommentRate').value) || 0
+        },
+        mention_config: {
+            enabled: document.getElementById('advMentionEnabled').checked,
+            rate: parseFloat(document.getElementById('advMentionRate').value) || 0
+        },
+        comment_templates: document.getElementById('advCommentTemplates').value.split('\n').map(t => t.trim()).filter(t => t),
+        mention_users: document.getElementById('advMentionUsers').value.split('\n').map(t => t.trim()).filter(t => t),
+        view_interval: {
+            min_sec: parseFloat(document.getElementById('advViewMin').value) || 2,
+            max_sec: parseFloat(document.getElementById('advViewMax').value) || 4
+        },
+        like_interval: {
+            min_sec: parseFloat(document.getElementById('advLikeMin').value) || 0.5,
+            max_sec: parseFloat(document.getElementById('advLikeMax').value) || 1.5
+        },
+        comment_interval: {
+            min_sec: parseFloat(document.getElementById('advCommentMin').value) || 2,
+            max_sec: parseFloat(document.getElementById('advCommentMax').value) || 5
+        },
+        mention_interval: {
+            min_sec: parseFloat(document.getElementById('advMentionMin').value) || 1,
+            max_sec: parseFloat(document.getElementById('advMentionMax').value) || 3
+        },
+        force_work_min: parseInt(document.getElementById('advForceWorkMin').value) || 60,
+        force_sleep_min: parseInt(document.getElementById('advForceSleepMin').value) || 30,
+        max_view_count: parseInt(document.getElementById('advMaxViewCount').value) || 500
+    };
+}
+
 async function refreshDevices() {
     try {
         const data = await API.get('/api/devices');
@@ -102,10 +150,13 @@ async function refreshTasks() {
             <div class="task-item">
                 <div class="task-header">
                     <span class="task-name">${t.name}</span>
-                    <span class="task-app">${t.app || '通用'}</span>
+                    <span class="task-app">${t.is_advanced ? '⭐ 高级' : (t.app || '通用')}</span>
                 </div>
                 <div class="task-meta">
-                    操作步骤: ${(t.actions || []).length} |
+                    ${t.is_advanced ? 
+                        `主题: ${(t.advanced_config?.topics || []).join(', ')} | 点赞:${(t.advanced_config?.like_config?.rate * 100) || 0}% 评论:${(t.advanced_config?.comment_config?.rate * 100) || 0}%` :
+                        `操作步骤: ${(t.actions || []).length}`
+                    } |
                     定时规则: ${t.schedule && t.schedule.type ? t.schedule.type : '手动执行'} |
                     已执行: ${t.run_count}次 (成功${t.success_count} / 失败${t.fail_count})
                     ${t.enabled ? '' : ' | <span style="color:#ff4d4f">已禁用</span>'}
@@ -244,23 +295,10 @@ function rebuildActionList() {
 }
 
 async function createTask() {
-    // 收集所有 action 的当前参数
-    for (let i = 0; i < actionList.length; i++) {
-        const paramsEl = document.getElementById(`action-params-${i}`);
-        if (paramsEl) {
-            try {
-                actionList[i].params = JSON.parse(paramsEl.value);
-            } catch (e) {
-                toast(`步骤 ${i+1} 参数格式错误`, 'error');
-                return;
-            }
-        }
-    }
-
     const name = document.getElementById('taskName').value.trim();
-    const app = document.getElementById('taskApp').value;
     const description = document.getElementById('taskDesc').value.trim();
     const scheduleType = document.getElementById('scheduleType').value;
+    const isAdvanced = document.getElementById('advancedMode').checked;
 
     if (!name) { toast('请输入任务名称', 'error'); return; }
 
@@ -278,15 +316,37 @@ async function createTask() {
         };
     }
 
+    let taskData = {
+        name,
+        description,
+        schedule,
+        target_devices: [],
+        is_advanced: isAdvanced
+    };
+
+    if (isAdvanced) {
+        taskData.app = document.getElementById('advApp').value;
+        taskData.actions = [];
+        taskData.advanced_config = getAdvancedConfig();
+    } else {
+        // 收集所有 action 的当前参数
+        for (let i = 0; i < actionList.length; i++) {
+            const paramsEl = document.getElementById(`action-params-${i}`);
+            if (paramsEl) {
+                try {
+                    actionList[i].params = JSON.parse(paramsEl.value);
+                } catch (e) {
+                    toast(`步骤 ${i+1} 参数格式错误`, 'error');
+                    return;
+                }
+            }
+        }
+        taskData.app = document.getElementById('taskApp').value;
+        taskData.actions = actionList;
+    }
+
     try {
-        const task = await API.post('/api/tasks', {
-            name,
-            description,
-            app,
-            actions: actionList,
-            schedule,
-            target_devices: [],
-        });
+        const task = await API.post('/api/tasks', taskData);
         toast('任务创建成功', 'success');
         actionList = [];
         document.getElementById('actionList').innerHTML = '';

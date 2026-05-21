@@ -45,22 +45,24 @@
             <div class="panel panel-full">
                 <div class="panel-header">
                     <h3>创建新任务</h3>
+                    <div style="display:flex; gap:8px;">
+                        <label style="display:flex; align-items:center; gap:4px; cursor:pointer;">
+                            <input type="radio" name="taskMode" id="normalMode" checked onchange="switchTaskMode()">
+                            <span>普通任务</span>
+                        </label>
+                        <label style="display:flex; align-items:center; gap:4px; cursor:pointer;">
+                            <input type="radio" name="taskMode" id="advancedMode" onchange="switchTaskMode()">
+                            <span>高级任务（浏览+互动）</span>
+                        </label>
+                    </div>
                 </div>
                 <div class="panel-body">
-                    <div style="display:grid; grid-template-columns:1fr 1fr; gap:16px;">
+                    <!-- 基础信息 -->
+                    <div style="display:grid; grid-template-columns:1fr 1fr; gap:16px; margin-bottom:16px;">
                         <div>
                             <div class="form-group">
                                 <label>任务名称 *</label>
                                 <input class="form-control" id="taskName" placeholder="例如：每天上午刷抖音10分钟"/>
-                            </div>
-                            <div class="form-group">
-                                <label>目标应用</label>
-                                <select class="form-control" id="taskApp">
-                                    <option value="">通用操作</option>
-                                    <option value="wechat">微信</option>
-                                    <option value="douyin">抖音</option>
-                                    <option value="xiaohongshu">小红书</option>
-                                </select>
                             </div>
                             <div class="form-group">
                                 <label>描述</label>
@@ -100,11 +102,138 @@
                         </div>
                     </div>
 
-                    <!-- 操作步骤 -->
-                    <div class="form-group" style="margin-top:12px">
-                        <label>操作步骤</label>
-                        <div id="actionList"></div>
-                        <button class="btn btn-sm btn-default" onclick="addAction()" style="margin-top:8px">+ 添加步骤</button>
+                    <!-- 普通任务模式 -->
+                    <div id="normalTaskSection">
+                        <div class="form-group">
+                            <label>目标应用</label>
+                            <select class="form-control" id="taskApp">
+                                <option value="">通用操作</option>
+                                <option value="wechat">微信</option>
+                                <option value="douyin">抖音</option>
+                                <option value="xiaohongshu">小红书</option>
+                            </select>
+                        </div>
+                        <div class="form-group">
+                            <label>操作步骤</label>
+                            <div id="actionList"></div>
+                            <button class="btn btn-sm btn-default" onclick="addAction()" style="margin-top:8px">+ 添加步骤</button>
+                        </div>
+                    </div>
+
+                    <!-- 高级任务模式 -->
+                    <div id="advancedTaskSection" style="display:none;">
+                        <div class="form-group">
+                            <label>目标应用 *</label>
+                            <select class="form-control" id="advApp">
+                                <option value="xiaohongshu">小红书</option>
+                                <option value="douyin">抖音</option>
+                                <option value="wechat">微信</option>
+                            </select>
+                        </div>
+
+                        <!-- 主题词配置 -->
+                        <div class="form-group">
+                            <label>主题词（一行一个）</label>
+                            <textarea class="form-control" id="advTopics" placeholder="浙江&#10;体育&#10;旅游&#10;美食"></textarea>
+                        </div>
+
+                        <!-- 动作配置 -->
+                        <div style="display:grid; grid-template-columns:1fr 1fr 1fr; gap:12px; margin-bottom:12px;">
+                            <div>
+                                <label style="display:flex; align-items:center; gap:8px;">
+                                    <input type="checkbox" id="advLikeEnabled">
+                                    <span>点赞</span>
+                                </label>
+                                <div class="form-group">
+                                    <label>比例（0-1）</label>
+                                    <input type="number" class="form-control" id="advLikeRate" step="0.01" value="0.1" min="0" max="1">
+                                </div>
+                            </div>
+                            <div>
+                                <label style="display:flex; align-items:center; gap:8px;">
+                                    <input type="checkbox" id="advCommentEnabled">
+                                    <span>评论</span>
+                                </label>
+                                <div class="form-group">
+                                    <label>比例（0-1）</label>
+                                    <input type="number" class="form-control" id="advCommentRate" step="0.01" value="0.05" min="0" max="1">
+                                </div>
+                            </div>
+                            <div>
+                                <label style="display:flex; align-items:center; gap:8px;">
+                                    <input type="checkbox" id="advMentionEnabled">
+                                    <span>@用户</span>
+                                </label>
+                                <div class="form-group">
+                                    <label>比例（0-1）</label>
+                                    <input type="number" class="form-control" id="advMentionRate" step="0.01" value="0.03" min="0" max="1">
+                                </div>
+                            </div>
+                        </div>
+
+                        <!-- 评论模板和@用户 -->
+                        <div style="display:grid; grid-template-columns:1fr 1fr; gap:12px; margin-bottom:12px;">
+                            <div class="form-group">
+                                <label>评论模板（一行一个）</label>
+                                <textarea class="form-control" id="advCommentTemplates" placeholder="太棒了！&#10;学到了！&#10;支持支持&#10;666"></textarea>
+                            </div>
+                            <div class="form-group">
+                                <label>@用户列表（一行一个）</label>
+                                <textarea class="form-control" id="advMentionUsers" placeholder="user1&#10;user2"></textarea>
+                            </div>
+                        </div>
+
+                        <!-- 时间配置 -->
+                        <div style="display:grid; grid-template-columns:1fr 1fr 1fr 1fr; gap:12px; margin-bottom:12px;">
+                            <div class="form-group">
+                                <label>浏览间隔（秒）</label>
+                                <div style="display:flex; gap:8px;">
+                                    <input type="number" class="form-control" id="advViewMin" value="2" min="0.1">
+                                    <span>-</span>
+                                    <input type="number" class="form-control" id="advViewMax" value="4" min="0.1">
+                                </div>
+                            </div>
+                            <div class="form-group">
+                                <label>点赞间隔（秒）</label>
+                                <div style="display:flex; gap:8px;">
+                                    <input type="number" class="form-control" id="advLikeMin" value="0.5" min="0.1">
+                                    <span>-</span>
+                                    <input type="number" class="form-control" id="advLikeMax" value="1.5" min="0.1">
+                                </div>
+                            </div>
+                            <div class="form-group">
+                                <label>评论间隔（秒）</label>
+                                <div style="display:flex; gap:8px;">
+                                    <input type="number" class="form-control" id="advCommentMin" value="2" min="0.1">
+                                    <span>-</span>
+                                    <input type="number" class="form-control" id="advCommentMax" value="5" min="0.1">
+                                </div>
+                            </div>
+                            <div class="form-group">
+                                <label>@间隔（秒）</label>
+                                <div style="display:flex; gap:8px;">
+                                    <input type="number" class="form-control" id="advMentionMin" value="1" min="0.1">
+                                    <span>-</span>
+                                    <input type="number" class="form-control" id="advMentionMax" value="3" min="0.1">
+                                </div>
+                            </div>
+                        </div>
+
+                        <!-- 强制工作和休眠 -->
+                        <div style="display:grid; grid-template-columns:1fr 1fr 1fr; gap:12px; margin-bottom:12px;">
+                            <div class="form-group">
+                                <label>强制工作（分钟）</label>
+                                <input type="number" class="form-control" id="advForceWorkMin" value="60" min="1">
+                            </div>
+                            <div class="form-group">
+                                <label>强制休眠（分钟）</label>
+                                <input type="number" class="form-control" id="advForceSleepMin" value="30" min="1">
+                            </div>
+                            <div class="form-group">
+                                <label>最大浏览数（0不限）</label>
+                                <input type="number" class="form-control" id="advMaxViewCount" value="500" min="0">
+                            </div>
+                        </div>
                     </div>
 
                     <button class="btn btn-primary" onclick="createTask()" style="margin-top:12px">创建任务</button>

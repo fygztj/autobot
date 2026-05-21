@@ -1,6 +1,6 @@
 """
 任务执行器 - 解析任务动作列表并执行
-支持 Android 和 iOS 双平台
+支持 Android 和 iOS 双平台，支持高级任务
 """
 import time
 import threading
@@ -10,12 +10,14 @@ from loguru import logger
 from backend.actions.touch import TouchController
 from backend.vision.element_finder import ElementFinder
 from backend.device_manager import device_manager
+from backend.apps.advanced_executor import AdvancedTaskExecutor
 
 
 class TaskRunner:
     """
     任务执行器
     解析 TaskDefinition 中的 actions 列表并执行
+    支持普通任务和高级任务两种模式
     """
 
     # 支持的动作类型
@@ -63,39 +65,19 @@ class TaskRunner:
             logger.warning(f"设备 {serial} 正忙")
             return False
 
-        client = device.client
-        touch = TouchController(client)
-        finder = ElementFinder(client)
-
         device_manager.mark_busy(serial, task.task_id)
         self._cancel_flags[task.task_id] = False
 
         try:
             logger.info(f"开始执行任务 [{task.name}] 在设备 {device.os_type} {serial}")
-            actions = task.actions or []
-
-            for i, action in enumerate(actions):
-                if self._cancel_flags.get(task.task_id):
-                    logger.info(f"任务已取消: {task.name}")
-                    return False
-
-                action_type = action.get("type", "")
-                handler = self.ACTION_HANDLERS.get(action_type)
-
-                if handler is None:
-                    logger.warning(f"未知动作类型: {action_type}")
-                    continue
-
-                logger.debug(f"步骤 {i+1}/{len(actions)}: {action_type} {action.get('params', {})}")
-
-                try:
-                    getattr(self, handler)(touch, finder, client, action.get("params", {}), device.os_type)
-                except Exception as e:
-                    logger.error(f"步骤 {i+1} 执行失败: {e}")
-                    return False
-
-            logger.info(f"任务 [{task.name}] 执行完成")
-            return True
+            
+            # 判断是否为高级任务
+            if task.is_advanced:
+                logger.info("执行高级任务模式")
+                return self._execute_advanced_task(task, device)
+            else:
+                logger.info("执行普通任务模式")
+                return self._execute_normal_task(task, device)
 
         except Exception as e:
             logger.error(f"任务执行异常: {e}")
@@ -103,6 +85,44 @@ class TaskRunner:
         finally:
             device_manager.mark_idle(serial)
             self._cancel_flags.pop(task.task_id, None)
+
+    def _execute_normal_task(self, task, device) -> bool:
+        """执行普通任务（基于动作列表）"""
+        client = device.client
+        touch = TouchController(client)
+        finder = ElementFinder(client)
+        
+        actions = task.actions or []
+
+        for i, action in enumerate(actions):
+            if self._cancel_flags.get(task.task_id):
+                logger.info(f"任务已取消: {task.name}")
+                return False
+
+            action_type = action.get("type", "")
+            handler = self.ACTION_HANDLERS.get(action_type)
+
+            if handler is None:
+                logger.warning(f"未知动作类型: {action_type}")
+                continue
+
+            logger.debug(f"步骤 {i+1}/{len(actions)}: {action_type} {action.get('params', {})}")
+
+            try:
+                getattr(self, handler)(touch, finder, client, action.get("params", {}), device.os_type)
+            except Exception as e:
+                logger.error(f"步骤 {i+1} 执行失败: {e}")
+                return False
+
+        logger.info(f"任务 [{task.name}] 执行完成")
+        return True
+
+    def _execute_advanced_task(self, task, device) -> bool:
+        """执行高级任务（主题词浏览+互动）"""
+        executor = AdvancedTaskExecutor(device, task.advanced_config)
+        executor.execute()
+        logger.info(f"高级任务 [{task.name}] 执行完成")
+        return True
 
     def cancel(self, task_id: str):
         """取消正在执行的任务"""
