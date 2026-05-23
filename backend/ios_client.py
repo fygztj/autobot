@@ -18,9 +18,16 @@ class iOSClient:
         self.connected = False
         self._check_connection()
 
+    @staticmethod
+    def _get_tidevice_path() -> str:
+        """获取 tidevice 命令路径"""
+        import shutil
+        return shutil.which("tidevice") or "/Users/gzt/Library/Python/3.8/bin/tidevice"
+
     def _run(self, *args, timeout: int = 10) -> Tuple[bool, str]:
         """执行 tidevice 命令，返回 (成功, 输出)"""
-        cmd = ["tidevice", "-u", self.udid, *args]
+        tidevice_path = self._get_tidevice_path()
+        cmd = [tidevice_path, "-u", self.udid, *args]
         logger.debug(f"tidevice: {' '.join(cmd)}")
         try:
             result = subprocess.run(

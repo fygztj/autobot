@@ -85,33 +85,53 @@ class DeviceManager:
     def _scan_ios_devices(self) -> List[str]:
         """扫描 iOS 设备"""
         try:
+            import shutil
+            import os
+            python_path = "/usr/local/bin/python3" if shutil.which("/usr/local/bin/python3") else shutil.which("python3")
+            tidevice_module_path = "/Users/gzt/Library/Python/3.8/lib/python/site-packages"
+            env = os.environ.copy()
+            env["REQUESTS_CA_BUNDLE"] = ""
+            env["CURL_CA_BUNDLE"] = ""
+            env["HOME"] = "/tmp"
+            env["PYTHONPATH"] = tidevice_module_path + os.pathsep + env.get("PYTHONPATH", "")
             result = subprocess.run(
-                ["tidevice", "list"],
-                capture_output=True, text=True, timeout=5
+                [python_path, "-m", "tidevice", "list"],
+                capture_output=True, text=True, timeout=10,
+                env=env
             )
+            logger.info(f"tidevice list 返回码: {result.returncode}")
+            logger.info(f"tidevice list 标准输出: {repr(result.stdout)}")
+            logger.info(f"tidevice list 错误输出: {repr(result.stderr)}")
             lines = result.stdout.strip().split("\n")
             udids = []
             for line in lines:
                 line = line.strip()
                 if line:
-                    udids.append(line)
+                    parts = line.split()
+                    if parts and len(parts) >= 2:
+                        udid = parts[0]
+                        if len(udid) >= 20 and (udid.startswith("0000") or udid.startswith("ffffffff")):
+                            udids.append(udid)
+            logger.info(f"解析到的 iOS 设备 UDID: {udids}")
             return udids
-        except FileNotFoundError:
-            logger.debug("tidevice 未安装，无法扫描 iOS 设备")
-            return []
         except Exception as e:
-            logger.debug(f"扫描 iOS 设备失败: {e}")
+            logger.error(f"扫描 iOS 设备失败: {e}")
+            import traceback
+            logger.error(f"异常堆栈: {traceback.format_exc()}")
             return []
 
     def scan_devices(self) -> List[Dict[str, str]]:
         """扫描当前连接的所有设备，返回 [{id, os_type}] 列表"""
         devices = []
         android_devices = self._scan_android_devices()
+        logger.info(f"Android 设备扫描结果: {len(android_devices)} 台")
         for serial in android_devices:
             devices.append({"id": serial, "os_type": "Android"})
         ios_devices = self._scan_ios_devices()
+        logger.info(f"iOS 设备扫描结果: {len(ios_devices)} 台 - {ios_devices}")
         for udid in ios_devices:
             devices.append({"id": udid, "os_type": "iOS"})
+        logger.info(f"总设备数: {len(devices)}")
         return devices
 
     def refresh(self):
