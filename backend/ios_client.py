@@ -213,9 +213,27 @@ class iOSClient:
         """启动应用（需要 Bundle ID）"""
         logger.info(f"iOSClient.start_app: bundle_id={bundle_id}")
         
+        success, output = self._try_start_app_with_tidevice(bundle_id)
+        if success:
+            return True, output
+        
+        logger.warning(f"tidevice 启动失败，尝试使用 xcrun simctl（仅模拟器）")
+        success, output = self._try_start_app_with_simctl(bundle_id)
+        if success:
+            return True, output
+        
+        logger.warning(f"simctl 也失败，尝试使用 AppleScript")
+        success, output = self._try_start_app_with_applescript(bundle_id)
+        if success:
+            return True, output
+        
+        return False, f"无法启动应用: {bundle_id}。可能需要 iOS 18.5 开发者镜像或手动在设备上启动应用"
+    
+    def _try_start_app_with_tidevice(self, bundle_id: str):
+        """使用 tidevice 启动应用"""
         tidevice_path = self._get_tidevice_path()
         cmd = [tidevice_path, "-u", self.udid, "launch", bundle_id]
-        logger.info(f"启动应用命令: {' '.join(cmd)}")
+        logger.debug(f"尝试 tidevice 启动: {' '.join(cmd)}")
         
         env = os.environ.copy()
         env['TIDEVICE_HOME'] = config.TIDEVICE_DIR
@@ -225,14 +243,70 @@ class iOSClient:
         try:
             result = subprocess.run(cmd, capture_output=True, text=True, timeout=30, encoding="utf-8", errors="replace", env=env)
             output = result.stdout.strip() or result.stderr.strip()
-            logger.info(f"启动应用结果: returncode={result.returncode}, output={output[:500]}")
-            return result.returncode == 0, output
-        except subprocess.TimeoutExpired:
-            logger.error("启动应用超时")
-            return False, "timeout"
+            
+            if result.returncode == 0:
+                logger.info(f"tidevice 启动成功: {bundle_id}")
+                return True, output
+            else:
+                if "18.5.zip" in output or "device-support" in output:
+                    logger.warning(f"tidevice 需要 iOS 18.5 开发者镜像")
+                return False, output
         except Exception as e:
-            logger.error(f"启动应用异常: {e}")
+            logger.warning(f"tidevice 启动异常: {e}")
             return False, str(e)
+    
+    def _try_start_app_with_simctl(self, bundle_id: str):
+        """使用 xcrun simctl 启动应用（仅适用于模拟器）"""
+        cmd = ["xcrun", "simctl", "launch", self.udid, bundle_id]
+        logger.debug(f"尝试 simctl 启动: {' '.join(cmd)}")
+        
+        try:
+            result = subprocess.run(cmd, capture_output=True, text=True, timeout=15, encoding="utf-8", errors="replace")
+            if result.returncode == 0:
+                logger.info(f"simctl 启动成功: {bundle_id}")
+                return True, result.stdout.strip()
+            return False, result.stderr.strip()
+        except Exception as e:
+            logger.warning(f"simctl 启动异常: {e}")
+            return False, str(e)
+    
+    def _try_start_app_with_applescript(self, bundle_id: str):
+        """使用 AppleScript 通过 Xcode Devices 窗口启动应用"""
+        app_name = self._bundle_id_to_app_name(bundle_id)
+        script = f'''
+            tell application "Xcode"
+                activate
+                delay 1
+            end tell
+            tell application "System Events"
+                tell process "Xcode"
+                    click menu item "Devices and Simulators" of menu "Window" of menu bar 1
+                    delay 2
+                end tell
+            end tell
+        '''
+        
+        logger.debug(f"尝试 AppleScript 启动应用: {app_name}")
+        
+        try:
+            result = subprocess.run(["osascript", "-e", script], capture_output=True, text=True, timeout=30)
+            if result.returncode == 0:
+                logger.info(f"AppleScript 执行成功")
+                return True, "Xcode Devices 窗口已打开，请手动选择设备并启动应用"
+            return False, result.stderr.strip()
+        except Exception as e:
+            logger.warning(f"AppleScript 执行异常: {e}")
+            return False, str(e)
+    
+    @staticmethod
+    def _bundle_id_to_app_name(bundle_id: str) -> str:
+        """根据 Bundle ID 获取应用名称"""
+        bundle_map = {
+            "com.tencent.mm": "微信",
+            "com.ss.android.ugc.aweme": "抖音",
+            "com.xingin.discover": "小红书",
+        }
+        return bundle_map.get(bundle_id, bundle_id)
 
     def stop_app(self, bundle_id: str):
         """强制停止应用"""

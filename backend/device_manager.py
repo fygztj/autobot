@@ -169,10 +169,15 @@ class DeviceManager:
         logger.info(f"Android 设备扫描结果: {len(android_devices)} 台")
         for serial in android_devices:
             devices.append({"id": serial, "os_type": "Android"})
-        ios_devices = self._scan_ios_devices()
-        logger.info(f"iOS 设备扫描结果: {len(ios_devices)} 台 - {ios_devices}")
-        for udid in ios_devices:
-            devices.append({"id": udid, "os_type": "iOS"})
+        
+        if config.ENABLE_IOS_SCAN:
+            ios_devices = self._scan_ios_devices()
+            logger.info(f"iOS 设备扫描结果: {len(ios_devices)} 台 - {ios_devices}")
+            for udid in ios_devices:
+                devices.append({"id": udid, "os_type": "iOS"})
+        else:
+            logger.info("iOS 设备扫描已禁用")
+        
         logger.info(f"总设备数: {len(devices)}")
         return devices
 
