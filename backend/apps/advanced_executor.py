@@ -67,22 +67,24 @@ class AdvancedTaskExecutor:
 
     def _start_app(self):
         """启动应用"""
+        from backend.config import config
+        
         logger.info(f"启动应用: {self.config.app}")
-        if self.config.app == "xiaohongshu":
-            self.touch.press_home()
-            time_controller.random_sleep(1, 2)
-            # TODO: 实际需要通过包名启动，或点击图标
-            self.touch.press_home()
-        elif self.config.app == "douyin":
-            self.touch.press_home()
-            time_controller.random_sleep(1, 2)
-            # TODO: 启动抖音
-            self.touch.press_home()
-        elif self.config.app == "wechat":
-            self.touch.press_home()
-            time_controller.random_sleep(1, 2)
-            # TODO: 启动微信
-            self.touch.press_home()
+        
+        package_map = config.APP_PACKAGES
+        package = package_map.get(self.config.app)
+        
+        if not package:
+            logger.warning(f"未知应用: {self.config.app}，无法启动")
+            return
+        
+        os_type = self.device.os_type
+        
+        if os_type == "Android":
+            self.client.start_app(package)
+        else:  # iOS
+            bundle_id = package
+            self.client.start_app(bundle_id)
         
         time_controller.random_sleep(3, 5, "等待应用启动")
 

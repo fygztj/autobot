@@ -93,6 +93,13 @@ function getAdvancedConfig() {
 
 async function refreshDevices() {
     try {
+        // 先调用刷新接口
+        try {
+            await API.post('/api/devices/refresh');
+        } catch (e) {
+            console.log('刷新设备接口调用失败，继续获取设备列表');
+        }
+        
         const data = await API.get('/api/devices');
         const container = document.getElementById('deviceList');
         if (!data.devices.length) {
@@ -122,6 +129,7 @@ async function refreshDevices() {
         document.getElementById('idleCount').textContent = data.devices.filter(d => !d.is_busy).length;
     } catch (e) {
         console.error(e);
+        toast('刷新设备失败', 'error');
     }
 }
 
@@ -294,12 +302,23 @@ function rebuildActionList() {
     });
 }
 
+let isCreatingTask = false;
+
 async function createTask() {
+    if (isCreatingTask) {
+        console.log('正在创建任务中，忽略重复请求');
+        return;
+    }
+    isCreatingTask = true;
+    
+    console.log('创建任务按钮被点击');
     const name = document.getElementById('taskName').value.trim();
     const description = document.getElementById('taskDesc').value.trim();
     const scheduleType = document.getElementById('scheduleType').value;
     const isAdvanced = document.getElementById('advancedMode').checked;
 
+    console.log(`任务名称: ${name}, 描述: ${description}, 是否高级: ${isAdvanced}`);
+    
     if (!name) { toast('请输入任务名称', 'error'); return; }
 
     let schedule = {};
@@ -345,16 +364,36 @@ async function createTask() {
         taskData.actions = actionList;
     }
 
+    console.log('准备发送任务数据:', JSON.stringify(taskData, null, 2));
+    
     try {
-        const task = await API.post('/api/tasks', taskData);
-        toast('任务创建成功', 'success');
+        console.log('开始调用 API.post(/api/tasks)');
+        const response = await fetch('/api/tasks', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify(taskData),
+        });
+        console.log('API 响应状态:', response.status);
+        
+        if (!response.ok) {
+            const errorText = await response.text();
+            console.error('API 错误响应:', errorText);
+            throw new Error(`HTTP ${response.status}: ${errorText}`);
+        }
+        
+        const task = await response.json();
+        console.log('任务创建成功:', task);
+        toast('任务创建成功！', 'success');
         actionList = [];
         document.getElementById('actionList').innerHTML = '';
         document.getElementById('taskName').value = '';
         document.getElementById('taskDesc').value = '';
         refreshTasks();
     } catch (e) {
+        console.error('创建任务失败:', e);
         toast('创建失败: ' + e.message, 'error');
+    } finally {
+        isCreatingTask = false;
     }
 }
 

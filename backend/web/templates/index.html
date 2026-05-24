@@ -236,12 +236,29 @@
                         </div>
                     </div>
 
-                    <button class="btn btn-primary" onclick="createTask()" style="margin-top:12px">创建任务</button>
+                    <button class="btn btn-primary" id="createTaskBtn" style="margin-top:12px">创建任务</button>
                 </div>
             </div>
         </div>
     </div>
 
     <script src="/static/js/app.js"></script>
+    <script>
+        // 直接在 HTML 中绑定事件作为备用方案
+        document.addEventListener('DOMContentLoaded', function() {
+            console.log('页面加载完成');
+            const btn = document.getElementById('createTaskBtn');
+            if (btn) {
+                console.log('找到创建任务按钮');
+                btn.addEventListener('click', function(e) {
+                    console.log('按钮被点击（事件监听器）');
+                    e.preventDefault();
+                    createTask();
+                });
+            } else {
+                console.error('未找到创建任务按钮');
+            }
+        });
+    </script>
 </body>
 </html>

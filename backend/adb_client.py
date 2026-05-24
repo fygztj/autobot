@@ -15,7 +15,27 @@ class ADBClient:
 
     def __init__(self, device_serial: str):
         self.serial = device_serial
-        self._adb_base = [config.ADB_PATH, "-s", device_serial]
+        # 尝试查找 adb 命令
+        import shutil
+        import os
+        adb_path = shutil.which(config.ADB_PATH)
+        if not adb_path:
+            common_adb_paths = [
+                "adb",
+                "/usr/local/bin/adb",
+                "/opt/homebrew/bin/adb",
+                os.path.expanduser("~/Library/Android/sdk/platform-tools/adb"),
+            ]
+            for path in common_adb_paths:
+                if shutil.which(path):
+                    adb_path = shutil.which(path)
+                    break
+        if not adb_path:
+            logger.warning(f"未找到 adb 命令，使用默认: {config.ADB_PATH}")
+            adb_path = config.ADB_PATH
+        
+        self._adb_path = adb_path
+        self._adb_base = [adb_path, "-s", device_serial]
 
     def _run(self, *args, timeout: int = 10) -> Tuple[bool, str]:
         """执行 ADB 命令，返回 (成功, 输出)"""

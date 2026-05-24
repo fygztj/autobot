@@ -2,23 +2,34 @@
 autobot 全局配置
 """
 import os
+import platform
 from dataclasses import dataclass, field
 from typing import List
+
+
+def get_app_data_dir():
+    """获取跨平台的应用数据目录（使用项目目录下的 data 目录，避免权限问题）"""
+    base_dir = os.path.dirname(os.path.abspath(__file__))
+    return os.path.join(base_dir, "data", "app_data")
 
 
 @dataclass
 class Config:
     # --- 存储路径 ---
     BASE_DIR: str = os.path.dirname(os.path.abspath(__file__))
+    APP_DATA_DIR: str = get_app_data_dir()
     DATA_DIR: str = os.path.join(BASE_DIR, "data")
     SCREENSHOT_DIR: str = os.path.join(DATA_DIR, "screenshots")
     TEMPLATE_DIR: str = os.path.join(DATA_DIR, "templates")
-    TASK_DB: str = os.path.join(DATA_DIR, "tasks.json")
+    TASK_DB: str = os.path.join(BASE_DIR, "data", "tasks.json")
+    # 跨平台临时目录（用于存储 tidevice SSL 证书等）
+    TIDEVICE_DIR: str = os.path.join(APP_DATA_DIR, "tidevice")
 
     # --- ADB / 设备 ---
     ADB_PATH: str = "adb"  # 系统 PATH 中有 adb 时用 "adb"，否则写完整路径
     ADB_CONNECT_TIMEOUT: int = 10
-    DEVICE_SCAN_INTERVAL: int = 5  # 扫描新设备间隔（秒）
+    DEVICE_SCAN_INTERVAL: int = 15  # 扫描新设备间隔（秒），增加到15秒减少卡顿
+    DEVICE_INFO_REFRESH_INTERVAL: int = 60  # 设备信息刷新间隔（秒）
 
     # --- 视觉识别 ---
     OCR_LANG: str = "ch"  # PaddleOCR 语言
@@ -46,12 +57,12 @@ class Config:
     APP_PACKAGES: dict = field(default_factory=lambda: {
         "wechat": "com.tencent.mm",
         "douyin": "com.ss.android.ugc.aweme",
-        "xiaohongshu": "com.xingin.xhs",
+        "xiaohongshu": "com.xingin.discover",
     })
 
     def ensure_dirs(self):
         """确保必要目录存在"""
-        for d in [self.DATA_DIR, self.SCREENSHOT_DIR, self.TEMPLATE_DIR]:
+        for d in [self.DATA_DIR, self.SCREENSHOT_DIR, self.TEMPLATE_DIR, self.APP_DATA_DIR, self.TIDEVICE_DIR]:
             os.makedirs(d, exist_ok=True)
 
 

@@ -94,6 +94,9 @@ class TaskRunner:
         
         actions = task.actions or []
 
+        if task.app:
+            self._start_app_for_task(task.app, device)
+
         for i, action in enumerate(actions):
             if self._cancel_flags.get(task.task_id):
                 logger.info(f"任务已取消: {task.name}")
@@ -252,6 +255,41 @@ class TaskRunner:
 
     def _do_swipe_to_refresh(self, touch: TouchController, finder, client, params, os_type):
         touch.swipe_to_refresh()
+
+
+    def _start_app_for_task(self, app_name: str, device):
+        """根据应用名称启动对应的应用"""
+        from backend.config import config
+        
+        package_map = config.APP_PACKAGES
+        package = package_map.get(app_name)
+        
+        if not package:
+            logger.warning(f"未知应用: {app_name}，无法启动")
+            return
+        
+        logger.info(f"启动应用: {app_name} ({package})")
+        
+        client = device.client
+        os_type = device.os_type
+        
+        if os_type == "Android":
+            client.start_app(package)
+        else:  # iOS
+            bundle_id = package
+            logger.info(f"iOS 设备，尝试启动应用: {bundle_id}")
+            # 检查客户端是否有返回值
+            result = client.start_app(bundle_id)
+            if result is not None:
+                ok, out = result
+                logger.info(f"启动应用结果: ok={ok}, output={out}")
+                if not ok:
+                    logger.error(f"启动应用失败: {out}")
+        
+        # 等待应用启动
+        from backend.actions.touch import TouchController
+        touch = TouchController(client)
+        touch.wait(3.0)
 
 
 # 全局单例

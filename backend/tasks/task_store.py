@@ -68,7 +68,8 @@ class TaskStore:
     """任务持久化存储（JSON 文件）"""
 
     def __init__(self):
-        self._file = config.TASK_DB
+        # 使用绝对路径，确保任务保存到正确位置
+        self._file = "/Users/gzt/project/autobot/data/tasks.json"
         self._lock = threading.Lock()
         self._tasks: Dict[str, TaskDefinition] = {}
         self._load()
@@ -90,11 +91,33 @@ class TaskStore:
 
     def _save(self):
         """保存到文件"""
-        os.makedirs(os.path.dirname(self._file), exist_ok=True)
-        with self._lock:
+        try:
+            dir_path = os.path.dirname(self._file)
+            logger.info(f"保存任务到文件: {self._file}")
+            
+            # 检查目录是否存在
+            if not os.path.exists(dir_path):
+                os.makedirs(dir_path, exist_ok=True)
+            
+            # 获取任务数据（不加锁，减少死锁风险）
             data = {tid: t.to_dict() for tid, t in self._tasks.items()}
+            logger.info(f"任务数量: {len(data)}")
+            
+            # 直接写入文件
+            logger.info(f"开始写入文件...")
             with open(self._file, "w", encoding="utf-8") as f:
                 json.dump(data, f, ensure_ascii=False, indent=2)
+            
+            # 验证文件是否创建成功
+            if os.path.exists(self._file):
+                logger.info(f"任务保存成功，文件大小: {os.path.getsize(self._file)} 字节")
+            else:
+                logger.error(f"任务保存失败，文件未创建")
+                
+        except Exception as e:
+            logger.error(f"保存任务失败: {e}")
+            import traceback
+            logger.error(f"异常堆栈: {traceback.format_exc()}")
 
     def add(self, task: TaskDefinition) -> TaskDefinition:
         with self._lock:

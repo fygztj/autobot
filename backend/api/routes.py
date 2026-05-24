@@ -9,6 +9,8 @@ from fastapi import FastAPI, HTTPException, WebSocket, WebSocketDisconnect
 from fastapi.staticfiles import StaticFiles
 from fastapi.responses import HTMLResponse
 from pydantic import BaseModel
+from fastapi.middleware.cors import CORSMiddleware
+from loguru import logger
 
 from backend.config import config
 from backend.device_manager import device_manager
@@ -51,6 +53,15 @@ class RunTaskRequest(BaseModel):
 
 app = FastAPI(title="autobot", description="移动端自动化机器人管理平台")
 
+# 添加 CORS 支持
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=["*"],
+    allow_credentials=True,
+    allow_methods=["*"],
+    allow_headers=["*"],
+)
+
 # 挂载静态文件
 import os
 static_dir = os.path.join(os.path.dirname(__file__), "..", "web", "static")
@@ -88,9 +99,11 @@ async def list_devices():
 
 @app.post("/api/devices/refresh")
 async def refresh_devices():
-    """手动刷新设备列表"""
-    device_manager.refresh()
-    return {"status": "ok", "count": device_manager.get_device_count()}
+    """手动刷新设备列表（异步执行）"""
+    import threading
+    # 在后台线程中执行刷新，避免阻塞请求
+    threading.Thread(target=device_manager.refresh, daemon=True).start()
+    return {"status": "ok", "message": "设备刷新已启动，请稍后查看设备列表"}
 
 
 @app.get("/api/devices/{serial}/screenshot")
@@ -220,21 +233,27 @@ async def get_task(task_id: str):
 @app.post("/api/tasks")
 async def create_task(req: TaskCreateRequest):
     """创建新任务"""
-    task = TaskDefinition(
-        name=req.name,
-        description=req.description,
-        app=req.app,
-        actions=req.actions,
-        schedule=req.schedule or {},
-        target_devices=req.target_devices,
-        is_advanced=req.is_advanced,
-        advanced_config=req.advanced_config or {},
-    )
-    task_store.add(task)
-    # 如果有定时规则，添加到调度器
-    if task.schedule:
-        task_scheduler.refresh_task(task.task_id)
-    return task.to_dict()
+    logger.info(f"收到创建任务请求: name={req.name}, is_advanced={req.is_advanced}, actions={len(req.actions)}")
+    try:
+        task = TaskDefinition(
+            name=req.name,
+            description=req.description,
+            app=req.app,
+            actions=req.actions,
+            schedule=req.schedule or {},
+            target_devices=req.target_devices,
+            is_advanced=req.is_advanced,
+            advanced_config=req.advanced_config or {},
+        )
+        task_store.add(task)
+        logger.info(f"任务创建成功: task_id={task.task_id}, name={task.name}")
+        # 如果有定时规则，添加到调度器
+        if task.schedule:
+            task_scheduler.refresh_task(task.task_id)
+        return task.to_dict()
+    except Exception as e:
+        logger.error(f"创建任务失败: {e}")
+        raise HTTPException(status_code=500, detail=f"创建任务失败: {str(e)}")
 
 
 @app.put("/api/tasks/{task_id}")
@@ -346,6 +365,40 @@ async def system_status():
 async def list_jobs():
     """获取调度器活跃任务列表"""
     return {"jobs": task_scheduler.get_jobs()}
+
+
+@app.post("/api/system/restart")
+async def restart_system():
+    """重启系统（软重启，无需重启进程）"""
+    import threading
+    
+    def _restart():
+        try:
+            logger.info("开始系统软重启...")
+            
+            # 停止任务调度器
+            task_scheduler.stop()
+            
+            # 停止设备扫描
+            device_manager.stop_scan()
+            
+            # 清空设备列表
+            device_manager._devices.clear()
+            device_manager._last_info_refresh.clear()
+            
+            # 重新初始化设备扫描
+            device_manager.start_scan()
+            
+            # 重新启动任务调度器
+            task_scheduler.start()
+            
+            logger.info("系统软重启完成")
+        except Exception as e:
+            logger.error(f"系统重启失败: {e}")
+    
+    # 在后台线程中执行重启
+    threading.Thread(target=_restart, daemon=True).start()
+    return {"status": "ok", "message": "系统重启已启动，请稍等几秒后刷新页面"}
 
 
 # ================== WebSocket ==================

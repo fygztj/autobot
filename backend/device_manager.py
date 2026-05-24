@@ -61,25 +61,67 @@ class DeviceManager:
         self._on_device_disconnected: Optional[Callable] = None
         self._scan_thread: Optional[threading.Thread] = None
         self._running = False
+        self._last_info_refresh: Dict[str, float] = {}  # 记录设备信息最后刷新时间
 
     # ================== 设备发现 ==================
 
     def _scan_android_devices(self) -> List[str]:
         """扫描 Android 设备"""
         try:
+            import shutil
+            import os
+            
+            # 尝试查找 adb 命令
+            adb_path = None
+            common_adb_paths = [
+                "adb",
+                "/usr/local/bin/adb",
+                "/opt/homebrew/bin/adb",
+                os.path.expanduser("~/Library/Android/sdk/platform-tools/adb"),
+            ]
+            
+            for path in common_adb_paths:
+                if shutil.which(path):
+                    adb_path = shutil.which(path)
+                    break
+            
+            if not adb_path:
+                logger.debug("未找到 adb 命令，无法扫描 Android 设备")
+                return []
+            
+            logger.info(f"使用 adb 路径: {adb_path}")
             result = subprocess.run(
-                [config.ADB_PATH, "devices"],
+                [adb_path, "devices"],
                 capture_output=True, text=True, timeout=5
             )
-            lines = result.stdout.strip().split("\n")[1:]  # 跳过首行 "List of devices"
+            
+            logger.info(f"adb devices 返回码: {result.returncode}")
+            logger.info(f"adb devices 标准输出:\n{repr(result.stdout)}")
+            if result.stderr:
+                logger.warning(f"adb devices 错误输出:\n{result.stderr}")
+            
+            lines = result.stdout.strip().split("\n")
             serials = []
-            for line in lines:
-                parts = line.strip().split("\t")
-                if len(parts) >= 2 and parts[1] == "device":
-                    serials.append(parts[0])
+            if len(lines) > 1:  # 至少有首行
+                for line in lines[1:]:  # 跳过首行 "List of devices"
+                    line = line.strip()
+                    if not line:
+                        continue
+                    parts = line.split("\t")
+                    if len(parts) >= 2:
+                        status = parts[1]
+                        if status == "device":
+                            serials.append(parts[0])
+                            logger.info(f"发现 Android 设备: {parts[0]}")
+                        else:
+                            logger.debug(f"设备 {parts[0]} 状态: {status}")
+            
+            logger.info(f"扫描到 {len(serials)} 台 Android 设备")
             return serials
         except Exception as e:
-            logger.debug(f"扫描 Android 设备失败: {e}")
+            logger.error(f"扫描 Android 设备失败: {e}")
+            import traceback
+            logger.error(f"异常堆栈: {traceback.format_exc()}")
             return []
 
     def _scan_ios_devices(self) -> List[str]:
@@ -136,11 +178,14 @@ class DeviceManager:
 
     def refresh(self):
         """刷新设备列表，处理连接/断开"""
+        logger.info("开始刷新设备列表...")
         current_devices = self.scan_devices()
         current_ids = {d["id"] for d in current_devices}
 
         with self._lock:
             known_ids = set(self._devices.keys())
+            logger.info(f"已知设备: {list(known_ids)}")
+            logger.info(f"当前发现: {list(current_ids)}")
 
             # 新增设备
             for device_info in current_devices:
@@ -148,18 +193,55 @@ class DeviceManager:
                 dev_os = device_info["os_type"]
                 if dev_id not in known_ids:
                     logger.info(f"发现新设备: {dev_os} {dev_id}")
-                    device = Device(dev_id, dev_os)
-                    device.refresh_info()
-                    self._devices[dev_id] = device
-                    if self._on_device_connected:
-                        self._on_device_connected(dev_id)
+                    try:
+                        device = Device(dev_id, dev_os)
+                        device.refresh_info()
+                        self._devices[dev_id] = device
+                        if self._on_device_connected:
+                            self._on_device_connected(dev_id)
+                    except Exception as e:
+                        logger.error(f"添加设备 {dev_id} 失败: {e}")
+                        import traceback
+                        logger.error(f"异常堆栈: {traceback.format_exc()}")
 
             # 断开设备
-            for dev_id in known_ids - current_ids:
-                logger.info(f"设备断开: {dev_id}")
-                del self._devices[dev_id]
-                if self._on_device_disconnected:
-                    self._on_device_disconnected(dev_id)
+            disconnected_devices = known_ids - current_ids
+            if disconnected_devices:
+                logger.info(f"检测到 {len(disconnected_devices)} 台设备可能断开: {list(disconnected_devices)}")
+            
+            for dev_id in disconnected_devices:
+                # 二次验证设备是否真的断开
+                still_connected = False
+                try:
+                    if dev_id in self._devices:
+                        device = self._devices[dev_id]
+                        still_connected = device.client.is_connected()
+                        if still_connected:
+                            logger.info(f"设备 {dev_id} 仍在连接，保留")
+                        else:
+                            logger.info(f"设备 {dev_id} 确认断开")
+                except Exception as e:
+                    logger.warning(f"验证设备 {dev_id} 连接状态时出错: {e}")
+                
+                if not still_connected:
+                    logger.info(f"删除断开的设备: {dev_id}")
+                    del self._devices[dev_id]
+                    if self._on_device_disconnected:
+                        self._on_device_disconnected(dev_id)
+            
+            # 对仍保留的设备刷新信息（限制刷新频率）
+            import time
+            current_time = time.time()
+            for dev_id, device in self._devices.items():
+                last_refresh = self._last_info_refresh.get(dev_id, 0)
+                if current_time - last_refresh >= config.DEVICE_INFO_REFRESH_INTERVAL:
+                    try:
+                        device.refresh_info()
+                        self._last_info_refresh[dev_id] = current_time
+                    except Exception as e:
+                        logger.warning(f"刷新设备 {dev_id} 信息失败: {e}")
+        
+        logger.info(f"刷新完成，当前设备数: {len(self._devices)}")
 
     def start_scan(self):
         """启动持续扫描线程"""
