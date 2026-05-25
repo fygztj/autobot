@@ -68,8 +68,8 @@ class TaskStore:
     """任务持久化存储（JSON 文件）"""
 
     def __init__(self):
-        # 使用绝对路径，确保任务保存到正确位置
-        self._file = "/Users/gzt/project/autobot/data/tasks.json"
+        # 使用配置中的路径
+        self._file = config.TASK_DB
         self._lock = threading.Lock()
         self._tasks: Dict[str, TaskDefinition] = {}
         self._load()

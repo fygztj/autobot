@@ -17,6 +17,7 @@ from backend.device_manager import device_manager
 from backend.tasks.task_store import task_store, TaskDefinition
 from backend.tasks.task_runner import task_runner
 from backend.tasks.scheduler import task_scheduler
+from backend.tasks.rotation_manager import task_rotation_manager
 from backend.api.websocket import ws_manager
 
 
@@ -345,6 +346,56 @@ async def get_app_schemas():
         XiaohongshuApp.get_actions_schema_static(),
     ]
     return {"apps": schemas}
+
+
+# ================== 任务轮换 API ==================
+
+@app.get("/api/rotation/tasks")
+async def get_rotation_tasks():
+    """获取轮换任务列表"""
+    tasks = task_rotation_manager.get_rotation_tasks()
+    return {
+        "tasks": [
+            {
+                "task_id": t.task_id,
+                "duration_min": t.duration_min,
+                "status": t.status,
+                "run_count": t.run_count,
+            } for t in tasks
+        ],
+        "is_running": task_rotation_manager._running,
+    }
+
+
+@app.post("/api/rotation/tasks")
+async def add_rotation_task(task_id: str, duration_min: int = 60):
+    """添加轮换任务"""
+    task = task_store.get(task_id)
+    if not task:
+        raise HTTPException(status_code=404, detail="任务不存在")
+    task_rotation_manager.add_rotation_task(task_id, duration_min)
+    return {"status": "ok"}
+
+
+@app.delete("/api/rotation/tasks/{task_id}")
+async def remove_rotation_task(task_id: str):
+    """移除轮换任务"""
+    task_rotation_manager.remove_rotation_task(task_id)
+    return {"status": "ok"}
+
+
+@app.post("/api/rotation/start")
+async def start_rotation():
+    """启动任务轮换"""
+    task_rotation_manager.start()
+    return {"status": "ok"}
+
+
+@app.post("/api/rotation/stop")
+async def stop_rotation():
+    """停止任务轮换"""
+    task_rotation_manager.stop()
+    return {"status": "ok"}
 
 
 # ================== 系统 API ==================
