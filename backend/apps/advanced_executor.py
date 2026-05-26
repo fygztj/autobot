@@ -42,12 +42,12 @@ class AdvancedTaskExecutor:
         # 根据应用类型选择对应的App执行器
         self.app_executor = None
         if config.app == "xiaohongshu":
-            self.app_executor = XiaohongshuApp(device.serial)
+            self.app_executor = XiaohongshuApp(device.client)
         elif config.app == "douyin":
-            self.app_executor = DouyinApp(device.serial)
+            self.app_executor = DouyinApp(device.client)
         elif config.app == "wechat":
             from backend.apps.wechat import WechatApp
-            self.app_executor = WechatApp(device.serial)
+            self.app_executor = WechatApp(device.client)
 
     def execute(self):
         """执行高级任务"""
@@ -224,11 +224,11 @@ class AdvancedTaskExecutor:
             self._interact()
             
             # 随机更换主题词（概率10%-20%）
-            if self.config.topics and random_selector.random_prob(random.uniform(0.1, 0.2)):
+            if self.config.topics and random_selector.should_do(random.uniform(0.1, 0.2)):
                 self._search_topic()
             
             # 随机点击相关推荐（概率15%）
-            if random_selector.random_prob(0.15):
+            if random_selector.should_do(0.15):
                 self._click_related_content()
             
             # 浏览间隔（根据内容类型动态调整）

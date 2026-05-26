@@ -39,22 +39,32 @@ class iOSClient:
         # 首先尝试在系统 PATH 中查找
         tidevice_path = shutil.which("tidevice")
         if tidevice_path:
+            logger.debug(f"找到 tidevice: {tidevice_path}")
             return tidevice_path
         
         # 根据不同系统查找常见位置
         system = platform.system()
         if system == "Windows":
             # Windows 常见位置
-            common_paths = [
-                os.path.join(os.environ.get("USERPROFILE", ""), "AppData", "Roaming", "Python", "Scripts", "tidevice.exe"),
-                os.path.join("C:\\", "Python38", "Scripts", "tidevice.exe"),
-            ]
+            user_profile = os.environ.get("USERPROFILE", "")
+            python_versions = ["Python313", "Python312", "Python311", "Python310", "Python39", "Python38"]
+            common_paths = []
+            for py_ver in python_versions:
+                common_paths.append(os.path.join(user_profile, "AppData", "Roaming", "Python", py_ver, "Scripts", "tidevice.exe"))
+                common_paths.append(os.path.join(user_profile, "AppData", "Local", "Programs", "Python", py_ver, "Scripts", "tidevice.exe"))
+            # 检查 PATH 中的 Python Scripts 目录
+            path_env = os.environ.get("PATH", "")
+            for path in path_env.split(os.pathsep):
+                if "Scripts" in path and os.path.exists(path):
+                    common_paths.append(os.path.join(path, "tidevice.exe"))
         elif system == "Darwin":  # macOS
             common_paths = [
                 "/Users/gzt/Library/Python/3.8/bin/tidevice",
                 "/usr/local/bin/tidevice",
                 "/opt/homebrew/bin/tidevice",
                 os.path.join(os.path.expanduser("~"), "Library", "Python", "3.8", "bin", "tidevice"),
+                os.path.join(os.path.expanduser("~"), "Library", "Python", "3.9", "bin", "tidevice"),
+                os.path.join(os.path.expanduser("~"), "Library", "Python", "3.10", "bin", "tidevice"),
             ]
         else:  # Linux
             common_paths = [
@@ -64,15 +74,21 @@ class iOSClient:
         
         for path in common_paths:
             if os.path.exists(path):
+                logger.debug(f"找到 tidevice: {path}")
                 return path
         
-        # 如果都没找到，返回默认值
+        # 如果都没找到，返回默认值（让系统查找）
+        logger.debug("未找到 tidevice，将使用系统 PATH 查找")
         return "tidevice"
 
     def _run(self, *args, timeout: int = 10) -> Tuple[bool, str]:
         """执行 tidevice 命令，返回 (成功, 输出)"""
-        tidevice_path = self._get_tidevice_path()
-        cmd = [tidevice_path, "-u", self.udid, *args]
+        import shutil
+        python_path = shutil.which("python") or shutil.which("python3")
+        if not python_path:
+            return False, "未找到 Python 可执行文件"
+        
+        cmd = [python_path, "-m", "tidevice", "-u", self.udid, *args]
         logger.debug(f"tidevice: {' '.join(cmd)}")
         try:
             # 设置 TIDEVICE_HOME 环境变量，让 tidevice 使用我们指定的目录
@@ -80,6 +96,7 @@ class iOSClient:
             env['TIDEVICE_HOME'] = config.TIDEVICE_DIR
             env['REQUESTS_CA_BUNDLE'] = ''
             env['CURL_CA_BUNDLE'] = ''
+            env['PYTHONIOENCODING'] = 'utf-8'
             
             result = subprocess.run(
                 cmd, capture_output=True, text=True,
@@ -128,52 +145,33 @@ class iOSClient:
     def is_connected(self) -> bool:
         """检查设备是否真正连接"""
         try:
-            # 先尝试简单的设备列表扫描
-            import shutil
-            import os
-            python_path = shutil.which("python3") or "/usr/local/bin/python3"
-            tidevice_module_path = "/Users/gzt/Library/Python/3.8/lib/python/site-packages"
-            env = os.environ.copy()
-            env["REQUESTS_CA_BUNDLE"] = ""
-            env["CURL_CA_BUNDLE"] = ""
-            env["PYTHONPATH"] = tidevice_module_path + os.pathsep + env.get("PYTHONPATH", "")
-            
-            result = subprocess.run(
-                [python_path, "-m", "tidevice", "list"],
-                capture_output=True, text=True, timeout=5,
-                env=env
-            )
-            
-            if result.returncode == 0:
-                # 检查输出中是否包含该设备
-                if self.udid in result.stdout:
-                    self.connected = True
-                    return True
+            # 使用 info 命令检查设备连接状态
+            ok, _ = self._run("info", timeout=3)
+            self.connected = ok
+            return ok
         except Exception as e:
             logger.debug(f"检查设备连接状态失败: {e}")
         
-        # 如果上面的方法失败，尝试 info 命令
-        ok, _ = self._run("info", timeout=3)
-        self.connected = ok
-        return ok
+        self.connected = False
+        return False
 
     def tap(self, x: int, y: int):
-        """点击屏幕坐标"""
-        self._run("xctest", "tap", str(x), str(y))
+        """点击屏幕坐标 - 使用 tidevice ui 命令"""
+        self._run("ui", "tap", str(x), str(y))
 
     def swipe(self, x1: int, y1: int, x2: int, y2: int, duration_ms: int = 300):
-        """滑动"""
+        """滑动 - 使用 tidevice ui 命令"""
         duration_s = duration_ms / 1000
-        self._run("xctest", "swipe", str(x1), str(y1), str(x2), str(y2), str(duration_s))
+        self._run("ui", "swipe", str(x1), str(y1), str(x2), str(y2), str(duration_s))
 
     def long_press(self, x: int, y: int, duration_ms: int = 1000):
-        """长按"""
+        """长按 - 使用 tidevice ui 命令"""
         duration_s = duration_ms / 1000
-        self._run("xctest", "swipe", str(x), str(y), str(x), str(y), str(duration_s))
+        self._run("ui", "swipe", str(x), str(y), str(x), str(y), str(duration_s))
 
     def input_text(self, text: str):
         """输入文本"""
-        self._run("xctest", "text", text)
+        self._run("ui", "text", text)
 
     def input_keyevent(self, key):
         """发送按键（兼容字符串和数字）"""
@@ -195,50 +193,55 @@ class iOSClient:
             "4": "4",
         }
         keycode = key_map.get(key_str, key_str)
-        self._run("xctest", "press", keycode)
+        self._run("ui", "press", keycode)
 
     def screenshot(self, save_path: str) -> bool:
         """截图并保存到指定路径"""
         ok, out = self._run("screenshot", save_path)
-        if not ok:
-            logger.warning(f"直接截图失败，尝试 xctest 截图...")
-            # 备用方案：先保存到设备再 pull
-            temp_path = f"/tmp/autobot_{int(time.time())}.png"
-            ok, out = self._run("xctest", "screenshot", temp_path)
-            if ok:
-                ok, out = self._run("pull", temp_path, save_path)
         return ok
 
     def start_app(self, bundle_id: str):
         """启动应用（需要 Bundle ID）"""
         logger.info(f"iOSClient.start_app: bundle_id={bundle_id}")
         
+        # 首先检查应用是否已经在前台
+        if self.is_app_foreground(bundle_id):
+            logger.info(f"应用 {bundle_id} 已在前台")
+            return True, "应用已在前台"
+        
+        # 尝试使用 tidevice launch
         success, output = self._try_start_app_with_tidevice(bundle_id)
         if success:
             return True, output
         
-        logger.warning(f"tidevice 启动失败，尝试使用 xcrun simctl（仅模拟器）")
-        success, output = self._try_start_app_with_simctl(bundle_id)
-        if success:
-            return True, output
+        # 如果失败是因为缺少开发者镜像，给出明确提示
+        if "18.5" in output or "device-support" in output:
+            logger.warning(f"需要 iOS 开发者镜像，请手动在设备上启动应用: {bundle_id}")
+            # 等待用户手动启动应用
+            for _ in range(10):
+                if self.is_app_foreground(bundle_id):
+                    logger.info(f"检测到应用已启动")
+                    return True, "应用已启动（手动）"
+                time.sleep(1)
         
-        logger.warning(f"simctl 也失败，尝试使用 AppleScript")
-        success, output = self._try_start_app_with_applescript(bundle_id)
-        if success:
-            return True, output
-        
-        return False, f"无法启动应用: {bundle_id}。可能需要 iOS 18.5 开发者镜像或手动在设备上启动应用"
+        logger.warning(f"无法自动启动应用，请手动在设备上打开: {bundle_id}")
+        return False, f"无法自动启动应用，请手动在设备上打开: {bundle_id}"
     
     def _try_start_app_with_tidevice(self, bundle_id: str):
         """使用 tidevice 启动应用"""
-        tidevice_path = self._get_tidevice_path()
-        cmd = [tidevice_path, "-u", self.udid, "launch", bundle_id]
+        import shutil
+        python_path = shutil.which("python") or shutil.which("python3")
+        if not python_path:
+            return False, "未找到 Python 可执行文件"
+        
+        cmd = [python_path, "-m", "tidevice", "-u", self.udid, "launch", bundle_id]
         logger.debug(f"尝试 tidevice 启动: {' '.join(cmd)}")
         
         env = os.environ.copy()
         env['TIDEVICE_HOME'] = config.TIDEVICE_DIR
         env['REQUESTS_CA_BUNDLE'] = ''
         env['CURL_CA_BUNDLE'] = ''
+        env['PYTHONIOENCODING'] = 'utf-8'
         
         try:
             result = subprocess.run(cmd, capture_output=True, text=True, timeout=30, encoding="utf-8", errors="replace", env=env)

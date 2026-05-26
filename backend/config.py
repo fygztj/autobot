@@ -26,11 +26,11 @@ class Config:
     TIDEVICE_DIR: str = os.path.join(APP_DATA_DIR, "tidevice")
 
     # --- ADB / 设备 ---
-    ADB_PATH: str = "/Users/gzt/Library/Python/3.8/lib/python/site-packages/adbutils/binaries/adb"  # Android SDK adb 路径
+    ADB_PATH: str = ""  # 空字符串表示自动查找
     ADB_CONNECT_TIMEOUT: int = 10
     DEVICE_SCAN_INTERVAL: int = 15  # 扫描新设备间隔（秒），增加到15秒减少卡顿
     DEVICE_INFO_REFRESH_INTERVAL: int = 60  # 设备信息刷新间隔（秒）
-    ENABLE_IOS_SCAN: bool = False  # 是否启用 iOS 设备扫描
+    ENABLE_IOS_SCAN: bool = True  # 是否启用 iOS 设备扫描
 
     # --- 视觉识别 ---
     OCR_LANG: str = "ch"  # PaddleOCR 语言

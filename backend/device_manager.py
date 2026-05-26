@@ -119,26 +119,62 @@ class DeviceManager:
             return []
 
     def _scan_ios_devices(self) -> List[str]:
-        """扫描 iOS 设备"""
+        """扫描 iOS 设备（跨平台支持）"""
         try:
             import shutil
             import os
-            python_path = "/usr/local/bin/python3" if shutil.which("/usr/local/bin/python3") else shutil.which("python3")
-            tidevice_module_path = "/Users/gzt/Library/Python/3.8/lib/python/site-packages"
+            import platform
+            
+            system = platform.system()
+            
+            # 根据平台获取 Python 路径
+            if system == "Windows":
+                python_path = shutil.which("python") or shutil.which("python3")
+                # Windows 上 tidevice 通常安装在 Scripts 目录
+                user_profile = os.environ.get("USERPROFILE", "")
+                python_versions = ["Python313", "Python312", "Python311", "Python310", "Python39"]
+                tidevice_module_path = ""
+                for py_ver in python_versions:
+                    path = os.path.join(user_profile, "AppData", "Roaming", "Python", py_ver, "site-packages")
+                    if os.path.exists(path):
+                        tidevice_module_path = path
+                        break
+            else:  # macOS/Linux
+                python_path = "/usr/local/bin/python3" if shutil.which("/usr/local/bin/python3") else shutil.which("python3")
+                tidevice_module_path = "/Users/gzt/Library/Python/3.8/lib/python/site-packages"
+            
+            if not python_path:
+                logger.error("未找到 Python 可执行文件")
+                return []
+            
             env = os.environ.copy()
             env["REQUESTS_CA_BUNDLE"] = ""
             env["CURL_CA_BUNDLE"] = ""
-            env["HOME"] = "/tmp"
-            env["PYTHONPATH"] = tidevice_module_path + os.pathsep + env.get("PYTHONPATH", "")
+            
+            if system == "Windows":
+                env["HOME"] = os.environ.get("TEMP", "/tmp")
+                env["PYTHONIOENCODING"] = "utf-8"
+            else:
+                env["HOME"] = "/tmp"
+            
+            # 使用 python -m tidevice 的方式调用
+            cmd = [python_path, "-m", "tidevice", "list"]
+            
+            # 使用 errors="replace" 处理编码问题
             result = subprocess.run(
-                [python_path, "-m", "tidevice", "list"],
-                capture_output=True, text=True, timeout=10,
-                env=env
+                cmd,
+                capture_output=True, text=True, timeout=15,
+                env=env,
+                encoding="utf-8",
+                errors="replace"
             )
-            logger.info(f"tidevice list 返回码: {result.returncode}")
-            logger.info(f"tidevice list 标准输出: {repr(result.stdout)}")
-            logger.info(f"tidevice list 错误输出: {repr(result.stderr)}")
-            lines = result.stdout.strip().split("\n")
+            
+            # 处理可能为 None 的情况
+            stdout = result.stdout.strip() if result.stdout else ""
+            stderr = result.stderr.strip() if result.stderr else ""
+            
+            # 处理可能为 None 的情况
+            lines = stdout.split("\n") if stdout else []
             udids = []
             for line in lines:
                 line = line.strip()
@@ -148,12 +184,10 @@ class DeviceManager:
                         udid = parts[0]
                         if len(udid) >= 20 and (udid.startswith("0000") or udid.startswith("ffffffff")):
                             udids.append(udid)
-            logger.info(f"解析到的 iOS 设备 UDID: {udids}")
+            
             return udids
         except Exception as e:
             logger.error(f"扫描 iOS 设备失败: {e}")
-            import traceback
-            logger.error(f"异常堆栈: {traceback.format_exc()}")
             return []
 
     def scan_devices(self) -> List[Dict[str, str]]:
@@ -170,7 +204,7 @@ class DeviceManager:
         else:
             logger.debug("iOS 设备扫描已禁用")
         
-        # 只有找到设备时才打印日志
+        # 如果找到设备，打印汇总日志
         if devices:
             logger.info(f"Android 设备扫描结果: {len(android_devices)} 台")
             if config.ENABLE_IOS_SCAN:
