@@ -89,16 +89,10 @@ class DeviceManager:
                 logger.debug("未找到 adb 命令，无法扫描 Android 设备")
                 return []
             
-            logger.info(f"使用 adb 路径: {adb_path}")
             result = subprocess.run(
                 [adb_path, "devices"],
                 capture_output=True, text=True, timeout=5
             )
-            
-            logger.info(f"adb devices 返回码: {result.returncode}")
-            logger.info(f"adb devices 标准输出:\n{repr(result.stdout)}")
-            if result.stderr:
-                logger.warning(f"adb devices 错误输出:\n{result.stderr}")
             
             lines = result.stdout.strip().split("\n")
             serials = []
@@ -113,10 +107,10 @@ class DeviceManager:
                         if status == "device":
                             serials.append(parts[0])
                             logger.info(f"发现 Android 设备: {parts[0]}")
-                        else:
-                            logger.debug(f"设备 {parts[0]} 状态: {status}")
             
-            logger.info(f"扫描到 {len(serials)} 台 Android 设备")
+            # 只有找到设备时才打印日志
+            if serials:
+                logger.info(f"扫描到 {len(serials)} 台 Android 设备")
             return serials
         except Exception as e:
             logger.error(f"扫描 Android 设备失败: {e}")
@@ -166,31 +160,39 @@ class DeviceManager:
         """扫描当前连接的所有设备，返回 [{id, os_type}] 列表"""
         devices = []
         android_devices = self._scan_android_devices()
-        logger.info(f"Android 设备扫描结果: {len(android_devices)} 台")
         for serial in android_devices:
             devices.append({"id": serial, "os_type": "Android"})
         
         if config.ENABLE_IOS_SCAN:
             ios_devices = self._scan_ios_devices()
-            logger.info(f"iOS 设备扫描结果: {len(ios_devices)} 台 - {ios_devices}")
             for udid in ios_devices:
                 devices.append({"id": udid, "os_type": "iOS"})
         else:
-            logger.info("iOS 设备扫描已禁用")
+            logger.debug("iOS 设备扫描已禁用")
         
-        logger.info(f"总设备数: {len(devices)}")
+        # 只有找到设备时才打印日志
+        if devices:
+            logger.info(f"Android 设备扫描结果: {len(android_devices)} 台")
+            if config.ENABLE_IOS_SCAN:
+                logger.info(f"iOS 设备扫描结果: {len(ios_devices)} 台")
+            logger.info(f"总设备数: {len(devices)}")
         return devices
 
     def refresh(self):
         """刷新设备列表，处理连接/断开"""
-        logger.info("开始刷新设备列表...")
         current_devices = self.scan_devices()
         current_ids = {d["id"] for d in current_devices}
+        has_devices = len(self._devices) > 0 or len(current_ids) > 0
+
+        if has_devices:
+            logger.info("开始刷新设备列表...")
 
         with self._lock:
             known_ids = set(self._devices.keys())
-            logger.info(f"已知设备: {list(known_ids)}")
-            logger.info(f"当前发现: {list(current_ids)}")
+            
+            if has_devices:
+                logger.info(f"已知设备: {list(known_ids)}")
+                logger.info(f"当前发现: {list(current_ids)}")
 
             # 新增设备
             for device_info in current_devices:
@@ -246,7 +248,8 @@ class DeviceManager:
                     except Exception as e:
                         logger.warning(f"刷新设备 {dev_id} 信息失败: {e}")
         
-        logger.info(f"刷新完成，当前设备数: {len(self._devices)}")
+        if has_devices or len(self._devices) > 0:
+            logger.info(f"刷新完成，当前设备数: {len(self._devices)}")
 
     def start_scan(self):
         """启动持续扫描线程"""
