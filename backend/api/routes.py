@@ -331,6 +331,13 @@ async def cancel_task(task_id: str):
     return {"status": "ok"}
 
 
+@app.get("/api/tasks/{task_id}/status")
+async def get_task_status(task_id: str):
+    """获取任务执行状态"""
+    status = task_runner.get_status(task_id)
+    return {"task_id": task_id, "status": status}
+
+
 # ================== 应用配置 API ==================
 
 @app.get("/api/apps/schemas")

@@ -146,6 +146,18 @@ async function showDeviceOCR(serial) {
 
 // ======================= 任务面板 =======================
 
+// 任务状态映射
+const taskStatusMap = {
+    idle: { label: '空闲', class: 'status-idle' },
+    running: { label: '执行中', class: 'status-running' },
+    completed: { label: '已完成', class: 'status-completed' },
+    cancelled: { label: '已取消', class: 'status-cancelled' },
+    failed: { label: '失败', class: 'status-failed' },
+};
+
+// 当前任务状态缓存
+let taskStatusCache = {};
+
 async function refreshTasks() {
     try {
         const data = await API.get('/api/tasks');
@@ -154,32 +166,68 @@ async function refreshTasks() {
             container.innerHTML = '<div class="empty-state">暂无任务<br>点击下方按钮创建新任务</div>';
             return;
         }
-        container.innerHTML = data.tasks.map(t => `
-            <div class="task-item">
-                <div class="task-header">
-                    <span class="task-name">${t.name}</span>
-                    <span class="task-app">${t.is_advanced ? '⭐ 高级' : (t.app || '通用')}</span>
+        
+        // 获取所有任务状态
+        await Promise.all(data.tasks.map(t => fetchTaskStatus(t.task_id)));
+        
+        container.innerHTML = data.tasks.map(t => {
+            const statusInfo = taskStatusCache[t.task_id] || { status: 'idle' };
+            const statusDisplay = taskStatusMap[statusInfo.status] || taskStatusMap.idle;
+            const isRunning = statusInfo.status === 'running';
+            
+            return `
+                <div class="task-item">
+                    <div class="task-header">
+                        <span class="task-name">${t.name}</span>
+                        <span class="task-app">${t.is_advanced ? '⭐ 高级' : (t.app || '通用')}</span>
+                        <span class="task-status ${statusDisplay.class}">${statusDisplay.label}</span>
+                    </div>
+                    <div class="task-meta">
+                        ${t.is_advanced ? 
+                            `主题: ${(t.advanced_config?.topics || []).join(', ')} | 点赞:${(t.advanced_config?.like_config?.rate * 100) || 0}% 评论:${(t.advanced_config?.comment_config?.rate * 100) || 0}%` :
+                            `操作步骤: ${(t.actions || []).length}`
+                        } |
+                        定时规则: ${t.schedule && t.schedule.type ? t.schedule.type : '手动执行'} |
+                        已执行: ${t.run_count}次 (成功${t.success_count} / 失败${t.fail_count})
+                        ${t.enabled ? '' : ' | <span style="color:#ff4d4f">已禁用</span>'}
+                    </div>
+                    <div class="task-actions">
+                        ${isRunning ? `
+                            <button class="btn btn-sm btn-warning" onclick="cancelTask('${t.task_id}')">⏹ 停止</button>
+                        ` : `
+                            <button class="btn btn-sm btn-success" onclick="runTask('${t.task_id}')">▶ 执行</button>
+                            <button class="btn btn-sm btn-primary" onclick="runTaskAll('${t.task_id}')">▶ 全部执行</button>
+                        `}
+                        <button class="btn btn-sm btn-default" onclick="editTask('${t.task_id}')">编辑</button>
+                        <button class="btn btn-sm btn-danger" onclick="deleteTask('${t.task_id}')">删除</button>
+                    </div>
                 </div>
-                <div class="task-meta">
-                    ${t.is_advanced ? 
-                        `主题: ${(t.advanced_config?.topics || []).join(', ')} | 点赞:${(t.advanced_config?.like_config?.rate * 100) || 0}% 评论:${(t.advanced_config?.comment_config?.rate * 100) || 0}%` :
-                        `操作步骤: ${(t.actions || []).length}`
-                    } |
-                    定时规则: ${t.schedule && t.schedule.type ? t.schedule.type : '手动执行'} |
-                    已执行: ${t.run_count}次 (成功${t.success_count} / 失败${t.fail_count})
-                    ${t.enabled ? '' : ' | <span style="color:#ff4d4f">已禁用</span>'}
-                </div>
-                <div class="task-actions">
-                    <button class="btn btn-sm btn-success" onclick="runTask('${t.task_id}')">▶ 执行</button>
-                    <button class="btn btn-sm btn-primary" onclick="runTaskAll('${t.task_id}')">▶ 全部执行</button>
-                    <button class="btn btn-sm btn-default" onclick="editTask('${t.task_id}')">编辑</button>
-                    <button class="btn btn-sm btn-danger" onclick="deleteTask('${t.task_id}')">删除</button>
-                </div>
-            </div>
-        `).join('');
+            `;
+        }).join('');
         document.getElementById('taskCount').textContent = data.total;
     } catch (e) {
         console.error(e);
+    }
+}
+
+async function fetchTaskStatus(taskId) {
+    try {
+        const data = await API.get(`/api/tasks/${taskId}/status`);
+        taskStatusCache[taskId] = data;
+    } catch (e) {
+        taskStatusCache[taskId] = { status: 'idle' };
+    }
+}
+
+async function cancelTask(taskId) {
+    if (!confirm('确定要停止此任务吗？')) return;
+    try {
+        await API.post(`/api/tasks/${taskId}/cancel`);
+        toast('任务已停止', 'info');
+        taskStatusCache[taskId] = { status: 'cancelled' };
+        refreshTasks();
+    } catch (e) {
+        toast('停止失败: ' + e.message, 'error');
     }
 }
 

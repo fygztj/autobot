@@ -47,9 +47,25 @@ class TaskRunner:
         "swipe_to_refresh": "_do_swipe_to_refresh",
     }
 
+    # 任务状态枚举
+    TASK_STATUS_IDLE = "idle"
+    TASK_STATUS_RUNNING = "running"
+    TASK_STATUS_CANCELLED = "cancelled"
+    TASK_STATUS_COMPLETED = "completed"
+    TASK_STATUS_FAILED = "failed"
+
     def __init__(self):
         self._running_tasks: Dict[str, threading.Thread] = {}
         self._cancel_flags: Dict[str, bool] = {}
+        self._task_status: Dict[str, str] = {}  # task_id -> status
+
+    def get_status(self, task_id: str) -> str:
+        """获取任务执行状态"""
+        return self._task_status.get(task_id, self.TASK_STATUS_IDLE)
+
+    def set_status(self, task_id: str, status: str):
+        """设置任务执行状态"""
+        self._task_status[task_id] = status
 
     def execute(self, task, serial: str) -> bool:
         """
@@ -70,21 +86,35 @@ class TaskRunner:
 
         try:
             logger.info(f"开始执行任务 [{task.name}] 在设备 {device.os_type} {serial}")
+            self.set_status(task.task_id, self.TASK_STATUS_RUNNING)
             
             # 判断是否为高级任务
             if task.is_advanced:
                 logger.info("执行高级任务模式")
-                return self._execute_advanced_task(task, device)
+                result = self._execute_advanced_task(task, device)
             else:
                 logger.info("执行普通任务模式")
-                return self._execute_normal_task(task, device)
+                result = self._execute_normal_task(task, device)
+            
+            if result:
+                self.set_status(task.task_id, self.TASK_STATUS_COMPLETED)
+            else:
+                self.set_status(task.task_id, self.TASK_STATUS_FAILED)
+            return result
 
         except Exception as e:
             logger.error(f"任务执行异常: {e}")
+            self.set_status(task.task_id, self.TASK_STATUS_FAILED)
             return False
         finally:
             device_manager.mark_idle(serial)
             self._cancel_flags.pop(task.task_id, None)
+            # 任务结束后延迟清除状态（保留状态显示一段时间）
+            import threading
+            def clear_status():
+                time.sleep(10)
+                self._task_status.pop(task.task_id, None)
+            threading.Thread(target=clear_status, daemon=True).start()
 
     def _execute_normal_task(self, task, device) -> bool:
         """执行普通任务（基于动作列表）"""
@@ -130,6 +160,7 @@ class TaskRunner:
     def cancel(self, task_id: str):
         """取消正在执行的任务"""
         self._cancel_flags[task_id] = True
+        self.set_status(task_id, self.TASK_STATUS_CANCELLED)
 
     # ================== 动作处理方法 ==================
 

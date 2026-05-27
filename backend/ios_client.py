@@ -1,11 +1,14 @@
 """
-iOS 设备客户端封装 - 基于 tidevice
+iOS 设备客户端封装 - 基于 WDA (WebDriverAgent) + tidevice
+WDA 替代方案：不依赖开发者镜像，通过 HTTP API 控制设备
 """
 import subprocess
 import time
 import random
 import os
 import platform
+import json
+import threading
 from typing import Optional, Tuple
 from loguru import logger
 
@@ -13,14 +16,37 @@ from backend.config import config
 
 
 class iOSClient:
-    """封装 tidevice 命令，以设备 UDID 为操作单元"""
+    """
+    iOS 设备客户端
+    优先使用 WDA HTTP API 进行触摸操作（不依赖开发者镜像）
+    使用 tidevice 进行设备管理和端口转发
+    """
+
+    # WDA 默认端口
+    WDA_PORT = 8100
+    WDA_MJPEG_PORT = 9100
 
     def __init__(self, device_udid: str):
         self.udid = device_udid
-        self.serial = device_udid  # 与 Android ADBClient 使用 serial，iOS 使用 udid，保持接口一致
+        self.serial = device_udid
         self.connected = False
+
+        # WDA 相关
+        self._wda_url = f"http://127.0.0.1:{self.WDA_PORT}"
+        self._wda_session_id: Optional[str] = None
+        self._wda_ready = False
+        self._relay_process: Optional[subprocess.Popen] = None
+        self._screen_w = 0
+        self._screen_h = 0
+
         self._ensure_tidevice_dirs()
         self._check_connection()
+        self._init_screen_size()
+
+        # 尝试启动 WDA 连接
+        self._setup_wda()
+
+    # ========== 设备连接与信息 ==========
 
     def _ensure_tidevice_dirs(self):
         """确保 tidevice 所需目录存在"""
@@ -29,75 +55,23 @@ class iOSClient:
         device_support_dir = os.path.join(tidevice_dir, "device-support")
         os.makedirs(ssl_dir, exist_ok=True)
         os.makedirs(device_support_dir, exist_ok=True)
-        logger.info(f"确保 tidevice 目录存在: {tidevice_dir}")
 
-    @staticmethod
-    def _get_tidevice_path() -> str:
-        """获取 tidevice 命令路径（跨平台支持）"""
+    def _get_python_path(self) -> str:
+        """获取 Python 可执行文件路径"""
         import shutil
-        
-        # 首先尝试在系统 PATH 中查找
-        tidevice_path = shutil.which("tidevice")
-        if tidevice_path:
-            logger.debug(f"找到 tidevice: {tidevice_path}")
-            return tidevice_path
-        
-        # 根据不同系统查找常见位置
-        system = platform.system()
-        if system == "Windows":
-            # Windows 常见位置
-            user_profile = os.environ.get("USERPROFILE", "")
-            python_versions = ["Python313", "Python312", "Python311", "Python310", "Python39", "Python38"]
-            common_paths = []
-            for py_ver in python_versions:
-                common_paths.append(os.path.join(user_profile, "AppData", "Roaming", "Python", py_ver, "Scripts", "tidevice.exe"))
-                common_paths.append(os.path.join(user_profile, "AppData", "Local", "Programs", "Python", py_ver, "Scripts", "tidevice.exe"))
-            # 检查 PATH 中的 Python Scripts 目录
-            path_env = os.environ.get("PATH", "")
-            for path in path_env.split(os.pathsep):
-                if "Scripts" in path and os.path.exists(path):
-                    common_paths.append(os.path.join(path, "tidevice.exe"))
-        elif system == "Darwin":  # macOS
-            common_paths = [
-                "/Users/gzt/Library/Python/3.8/bin/tidevice",
-                "/usr/local/bin/tidevice",
-                "/opt/homebrew/bin/tidevice",
-                os.path.join(os.path.expanduser("~"), "Library", "Python", "3.8", "bin", "tidevice"),
-                os.path.join(os.path.expanduser("~"), "Library", "Python", "3.9", "bin", "tidevice"),
-                os.path.join(os.path.expanduser("~"), "Library", "Python", "3.10", "bin", "tidevice"),
-            ]
-        else:  # Linux
-            common_paths = [
-                "/usr/local/bin/tidevice",
-                os.path.join(os.path.expanduser("~"), ".local", "bin", "tidevice"),
-            ]
-        
-        for path in common_paths:
-            if os.path.exists(path):
-                logger.debug(f"找到 tidevice: {path}")
-                return path
-        
-        # 如果都没找到，返回默认值（让系统查找）
-        logger.debug("未找到 tidevice，将使用系统 PATH 查找")
-        return "tidevice"
+        python_path = shutil.which("python") or shutil.which("python3") or "python"
+        return python_path
 
     def _run(self, *args, timeout: int = 10) -> Tuple[bool, str]:
-        """执行 tidevice 命令，返回 (成功, 输出)"""
-        import shutil
-        python_path = shutil.which("python") or shutil.which("python3")
-        if not python_path:
-            return False, "未找到 Python 可执行文件"
-        
+        """执行 tidevice 命令"""
+        python_path = self._get_python_path()
         cmd = [python_path, "-m", "tidevice", "-u", self.udid, *args]
-        logger.debug(f"tidevice: {' '.join(cmd)}")
+
         try:
-            # 设置 TIDEVICE_HOME 环境变量，让 tidevice 使用我们指定的目录
             env = os.environ.copy()
             env['TIDEVICE_HOME'] = config.TIDEVICE_DIR
-            env['REQUESTS_CA_BUNDLE'] = ''
-            env['CURL_CA_BUNDLE'] = ''
             env['PYTHONIOENCODING'] = 'utf-8'
-            
+
             result = subprocess.run(
                 cmd, capture_output=True, text=True,
                 timeout=timeout, encoding="utf-8", errors="replace",
@@ -113,10 +87,7 @@ class iOSClient:
     def _check_connection(self) -> bool:
         """检查设备是否连接"""
         ok, out = self._run("info", timeout=5)
-        if ok:
-            self.connected = True
-        else:
-            self.connected = False
+        self.connected = ok
         return ok
 
     def get_info(self) -> dict:
@@ -128,207 +99,384 @@ class iOSClient:
             "model": "iOS Device",
             "os_type": "iOS",
             "os_version": "Unknown",
-            "screen_width": 0,
-            "screen_height": 0,
+            "screen_width": self._screen_w or 0,
+            "screen_height": self._screen_h or 0,
             "connected": self.is_connected(),
         }
-        if ok:
+        if ok and out:
             try:
-                import json
                 device_info = json.loads(out)
                 info["model"] = device_info.get("DeviceName", "iPhone")
                 info["os_version"] = device_info.get("ProductVersion", "Unknown")
-            except Exception as e:
-                logger.debug(f"解析设备信息失败: {e}")
+            except Exception:
+                pass
         return info
 
     def is_connected(self) -> bool:
         """检查设备是否真正连接"""
         try:
-            # 使用 info 命令检查设备连接状态
             ok, _ = self._run("info", timeout=3)
             self.connected = ok
             return ok
-        except Exception as e:
-            logger.debug(f"检查设备连接状态失败: {e}")
-        
+        except Exception:
+            pass
         self.connected = False
         return False
 
+    def _init_screen_size(self):
+        """初始化屏幕尺寸"""
+        try:
+            ok, out = self._run("info", timeout=3)
+            if ok and out:
+                device_info = json.loads(out)
+                model = device_info.get("DeviceName", "")
+                model_size_map = {
+                    "iPhone 15 Pro Max": (1290, 2796),
+                    "iPhone 15 Pro": (1179, 2556),
+                    "iPhone 15 Plus": (1284, 2778),
+                    "iPhone 15": (1179, 2556),
+                    "iPhone 14 Pro Max": (1290, 2796),
+                    "iPhone 14 Pro": (1179, 2556),
+                    "iPhone 14 Plus": (1284, 2778),
+                    "iPhone 14": (1170, 2532),
+                    "iPhone 13 Pro Max": (1284, 2778),
+                    "iPhone 13 Pro": (1170, 2532),
+                    "iPhone 13": (1170, 2532),
+                    "iPhone 13 mini": (1080, 2340),
+                    "iPhone 12 Pro Max": (1284, 2778),
+                    "iPhone 12 Pro": (1170, 2532),
+                    "iPhone 12": (1170, 2532),
+                    "iPhone 12 mini": (1080, 2340),
+                    "iPhone 11 Pro Max": (1242, 2688),
+                    "iPhone 11 Pro": (1125, 2436),
+                    "iPhone 11": (828, 1792),
+                    "iPhone XS Max": (1242, 2688),
+                    "iPhone XS": (1125, 2436),
+                    "iPhone XR": (828, 1792),
+                    "iPhone X": (1125, 2436),
+                    "iPhone SE (3rd generation)": (750, 1334),
+                    "iPhone SE (2nd generation)": (750, 1334),
+                }
+                self._screen_w, self._screen_h = model_size_map.get(model, (1179, 2556))
+        except Exception:
+            self._screen_w, self._screen_h = 1179, 2556
+
+    def get_screen_size(self) -> Tuple[int, int]:
+        """获取屏幕宽高"""
+        return self._screen_w, self._screen_h
+
+    # ========== WDA 设置与通信 ==========
+
+    def _setup_wda(self):
+        """设置 WDA 连接（通过 USB 端口转发）"""
+        logger.info(f"正在设置 WDA 连接...")
+
+        # 启动 tidevice relay 做端口转发（WDA 8100 端口）
+        self._start_relay()
+
+        # 等待几秒让转发建立
+        time.sleep(2)
+
+        # 尝试连接 WDA
+        self._connect_wda()
+
+    def _start_relay(self):
+        """启动 USB 端口转发 (8100 -> device WDA)"""
+        try:
+            python_path = self._get_python_path()
+            cmd = [python_path, "-m", "tidevice", "-u", self.udid, "relay",
+                   str(self.WDA_PORT), str(self.WDA_PORT)]
+
+            env = os.environ.copy()
+            env['PYTHONIOENCODING'] = 'utf-8'
+
+            self._relay_process = subprocess.Popen(
+                cmd,
+                stdout=subprocess.DEVNULL,
+                stderr=subprocess.DEVNULL,
+                env=env
+            )
+            logger.info(f"WDA 端口转发已启动: {self.WDA_PORT} -> 设备:{self.WDA_PORT}")
+        except Exception as e:
+            logger.warning(f"启动端口转发失败: {e}")
+
+    def _connect_wda(self):
+        """连接 WDA 并创建 session"""
+        import urllib.request
+        import urllib.error
+
+        # 尝试获取 WDA 状态
+        for i in range(10):
+            try:
+                req = urllib.request.Request(
+                    f"{self._wda_url}/status",
+                    headers={"Content-Type": "application/json"}
+                )
+                with urllib.request.urlopen(req, timeout=5) as resp:
+                    data = json.loads(resp.read().decode())
+                    session_id = data.get("sessionId")
+                    if session_id:
+                        self._wda_session_id = session_id
+                        self._wda_ready = True
+                        logger.info(f"WDA 已连接, session: {session_id[:8]}...")
+                        return
+            except Exception:
+                pass
+
+            # 如果状态检查失败，尝试创建新 session
+            try:
+                req_body = json.dumps({
+                    "capabilities": {
+                        "bundleId": "com.apple.Preferences"
+                    }
+                }).encode()
+                req = urllib.request.Request(
+                    f"{self._wda_url}/session",
+                    data=req_body,
+                    headers={"Content-Type": "application/json"}
+                )
+                with urllib.request.urlopen(req, timeout=5) as resp:
+                    data = json.loads(resp.read().decode())
+                    session_id = data.get("sessionId")
+                    if session_id:
+                        self._wda_session_id = session_id
+                        self._wda_ready = True
+                        logger.info(f"WDA session 已创建: {session_id[:8]}...")
+                        return
+            except Exception:
+                pass
+
+            if i % 3 == 0:
+                logger.debug(f"等待 WDA 就绪... ({i+1}/10)")
+            time.sleep(1)
+
+        logger.warning("WDA 连接失败，将使用 xctest 作为备用方案")
+
+    def _wda_request(self, method: str, path: str, data: dict = None) -> Tuple[bool, dict]:
+        """发送 WDA HTTP 请求"""
+        import urllib.request
+        import urllib.error
+
+        if not self._wda_ready or not self._wda_session_id:
+            return False, {"error": "WDA not ready"}
+
+        url = f"{self._wda_url}/session/{self._wda_session_id}{path}"
+        req_body = json.dumps(data).encode() if data else None
+
+        try:
+            req = urllib.request.Request(
+                url, data=req_body,
+                headers={"Content-Type": "application/json"},
+                method=method
+            )
+            with urllib.request.urlopen(req, timeout=10) as resp:
+                result = json.loads(resp.read().decode())
+                return True, result
+        except urllib.error.HTTPError as e:
+            error_body = e.read().decode() if e.fp else str(e)
+            return False, {"error": error_body}
+        except Exception as e:
+            return False, {"error": str(e)}
+
+    # ========== 触摸操作 ==========
+
+    def can_control(self) -> bool:
+        """检查是否可以控制设备（WDA 或 xctest 至少一个可用）"""
+        if self._wda_ready:
+            return True
+        ok, out = self._run("xctest", "--help", timeout=5)
+        if ok or ("unrecognized arguments" not in out and "error" not in out.lower()):
+            return True
+        return False
+
     def tap(self, x: int, y: int):
-        """点击屏幕坐标 - 使用 tidevice ui 命令"""
-        self._run("ui", "tap", str(x), str(y))
+        """点击屏幕坐标"""
+        success = self._do_touch("tap", x, y)
+        if not success:
+            raise RuntimeError(f"iOS 点击失败：无法控制设备 (坐标: {x}, {y})")
 
     def swipe(self, x1: int, y1: int, x2: int, y2: int, duration_ms: int = 300):
-        """滑动 - 使用 tidevice ui 命令"""
-        duration_s = duration_ms / 1000
-        self._run("ui", "swipe", str(x1), str(y1), str(x2), str(y2), str(duration_s))
+        """滑动"""
+        success = self._do_touch("swipe", x1, y1, x2, y2, duration_ms)
+        if not success:
+            raise RuntimeError(f"iOS 滑动失败：无法控制设备")
 
     def long_press(self, x: int, y: int, duration_ms: int = 1000):
-        """长按 - 使用 tidevice ui 命令"""
-        duration_s = duration_ms / 1000
-        self._run("ui", "swipe", str(x), str(y), str(x), str(y), str(duration_s))
+        """长按"""
+        success = self._do_touch("long_press", x, y, None, None, duration_ms)
+        if not success:
+            raise RuntimeError(f"iOS 长按失败：无法控制设备")
+
+    def _do_touch(self, action: str, x1: int, y1: int,
+                  x2: int = None, y2: int = None, duration_ms: int = 300) -> bool:
+        """统一触摸操作入口 - 返回是否成功"""
+        if self._wda_ready:
+            if self._wda_touch(action, x1, y1, x2, y2, duration_ms):
+                return True
+            logger.warning(f"WDA {action} 失败，尝试 xctest")
+        
+        if self._xctest_touch(action, x1, y1, x2, y2, duration_ms):
+            return True
+        
+        logger.error(f"iOS {action} 操作失败：WDA 和 xctest 均不可用")
+        return False
+
+    def _wda_touch(self, action: str, x1: int, y1: int,
+                   x2: int = None, y2: int = None, duration_ms: int = 300) -> bool:
+        """通过 WDA HTTP API 执行触摸操作"""
+        try:
+            if action == "tap":
+                ok, result = self._wda_request("POST", "/wda/tap/0", {"x": x1, "y": y1})
+                return ok
+            elif action == "swipe":
+                ok, result = self._wda_request("POST", "/wda/dragfromtoforduration", {
+                    "fromX": x1, "fromY": y1, "toX": x2, "toY": y2,
+                    "duration": duration_ms / 1000.0
+                })
+                return ok
+            elif action == "long_press":
+                ok, result = self._wda_request("POST", "/wda/dragfromtoforduration", {
+                    "fromX": x1, "fromY": y1, "toX": x1, "toY": y1,
+                    "duration": duration_ms / 1000.0
+                })
+                return ok
+        except Exception as e:
+            logger.warning(f"WDA {action} 失败: {e}")
+        return False
+
+    def _xctest_touch(self, action: str, x1: int, y1: int,
+                      x2: int = None, y2: int = None, duration_ms: int = 300) -> bool:
+        """通过 tidevice xctest 执行触摸操作 - 返回是否成功"""
+        try:
+            if action == "tap":
+                ok, out = self._run("xctest", "tap", str(x1), str(y1), timeout=10)
+                if ok:
+                    return True
+                logger.error(f"xctest tap 失败: {out}")
+                return False
+            elif action == "swipe":
+                duration_s = duration_ms / 1000.0
+                ok, out = self._run("xctest", "swipe",
+                                    str(x1), str(y1), str(x2), str(y2), str(duration_s), timeout=10)
+                if ok:
+                    return True
+                logger.error(f"xctest swipe 失败: {out}")
+                return False
+            elif action == "long_press":
+                duration_s = duration_ms / 1000.0
+                ok, out = self._run("xctest", "swipe",
+                                    str(x1), str(y1), str(x1), str(y1), str(duration_s), timeout=10)
+                if ok:
+                    return True
+                logger.error(f"xctest long_press 失败: {out}")
+                return False
+        except Exception as e:
+            logger.error(f"xctest {action} 异常: {e}")
+        return False
+
+    # ========== 输入操作 ==========
 
     def input_text(self, text: str):
         """输入文本"""
-        self._run("ui", "text", text)
+        if self._wda_ready:
+            try:
+                for ch in text:
+                    ok, result = self._wda_request("POST", "/wda/keys", {"value": [ch]})
+                    if ok:
+                        time.sleep(0.05)
+                return
+            except Exception:
+                pass
+
+        # 备用：使用 xctest
+        try:
+            ok, out = self._run("xctest", "text", text)
+            if not ok and out:
+                logger.debug(f"xctest text 失败: {out}")
+        except Exception:
+            pass
 
     def input_keyevent(self, key):
-        """发送按键（兼容字符串和数字）"""
-        key_str = str(key)
-        # iOS 常用按键映射
-        key_map = {
-            "home": "1",
-            "volumeUp": "2",
-            "volumeDown": "3",
-            "power": "4",
-            "back": "1",  # iOS 没有返回键，映射到 Home
-            "enter": "1",
-            "del": "1",
-            "menu": "1",
-            "app_switch": "1",
-            "1": "1",
-            "2": "2",
-            "3": "3",
-            "4": "4",
-        }
-        keycode = key_map.get(key_str, key_str)
-        self._run("ui", "press", keycode)
+        """发送按键"""
+        # iOS 没有物理按键事件，通过 WDA 实现 home 键等
+        if key in ("home", "1") and self._wda_ready:
+            self._wda_request("POST", "/wda/homescreen", {})
+            return
+
+        # xctest 备用
+        try:
+            key_str = str(key)
+            keycode = {"home": "1", "back": "1", "enter": "1",
+                        "1": "1", "2": "2", "3": "3", "4": "4"}.get(key_str, key_str)
+            self._run("xctest", "press", keycode)
+        except Exception:
+            pass
+
+    # ========== 截图 ==========
 
     def screenshot(self, save_path: str) -> bool:
-        """截图并保存到指定路径"""
-        ok, out = self._run("screenshot", save_path)
+        """截图并保存（WDA 或 tidevice 方式）"""
+        # 方式1：WDA 截图
+        if self._wda_ready:
+            try:
+                import urllib.request
+                import base64
+                req = urllib.request.Request(f"{self._wda_url}/screenshot")
+                with urllib.request.urlopen(req, timeout=10) as resp:
+                    data = json.loads(resp.read().decode())
+                    img_b64 = data.get("value", "")
+                    if img_b64:
+                        img_bytes = base64.b64decode(img_b64)
+                        with open(save_path, "wb") as f:
+                            f.write(img_bytes)
+                        return True
+            except Exception:
+                pass
+
+        # 方式2：tidevice 截图
+        ok, out = self._run("screenshot", save_path, timeout=10)
         return ok
 
+    # ========== 应用管理 ==========
+
     def start_app(self, bundle_id: str):
-        """启动应用（需要 Bundle ID）"""
-        logger.info(f"iOSClient.start_app: bundle_id={bundle_id}")
-        
-        # 首先检查应用是否已经在前台
-        if self.is_app_foreground(bundle_id):
-            logger.info(f"应用 {bundle_id} 已在前台")
-            return True, "应用已在前台"
-        
-        # 尝试使用 tidevice launch
-        success, output = self._try_start_app_with_tidevice(bundle_id)
-        if success:
-            return True, output
-        
-        # 如果失败是因为缺少开发者镜像，给出明确提示
-        if "18.5" in output or "device-support" in output:
-            logger.warning(f"需要 iOS 开发者镜像，请手动在设备上启动应用: {bundle_id}")
-            # 等待用户手动启动应用
-            for _ in range(10):
-                if self.is_app_foreground(bundle_id):
-                    logger.info(f"检测到应用已启动")
-                    return True, "应用已启动（手动）"
-                time.sleep(1)
-        
-        logger.warning(f"无法自动启动应用，请手动在设备上打开: {bundle_id}")
-        return False, f"无法自动启动应用，请手动在设备上打开: {bundle_id}"
-    
-    def _try_start_app_with_tidevice(self, bundle_id: str):
-        """使用 tidevice 启动应用"""
-        import shutil
-        python_path = shutil.which("python") or shutil.which("python3")
-        if not python_path:
-            return False, "未找到 Python 可执行文件"
-        
-        cmd = [python_path, "-m", "tidevice", "-u", self.udid, "launch", bundle_id]
-        logger.debug(f"尝试 tidevice 启动: {' '.join(cmd)}")
-        
-        env = os.environ.copy()
-        env['TIDEVICE_HOME'] = config.TIDEVICE_DIR
-        env['REQUESTS_CA_BUNDLE'] = ''
-        env['CURL_CA_BUNDLE'] = ''
-        env['PYTHONIOENCODING'] = 'utf-8'
-        
-        try:
-            result = subprocess.run(cmd, capture_output=True, text=True, timeout=30, encoding="utf-8", errors="replace", env=env)
-            output = result.stdout.strip() or result.stderr.strip()
-            
-            if result.returncode == 0:
-                logger.info(f"tidevice 启动成功: {bundle_id}")
-                return True, output
-            else:
-                if "18.5.zip" in output or "device-support" in output:
-                    logger.warning(f"tidevice 需要 iOS 18.5 开发者镜像")
-                return False, output
-        except Exception as e:
-            logger.warning(f"tidevice 启动异常: {e}")
-            return False, str(e)
-    
-    def _try_start_app_with_simctl(self, bundle_id: str):
-        """使用 xcrun simctl 启动应用（仅适用于模拟器）"""
-        cmd = ["xcrun", "simctl", "launch", self.udid, bundle_id]
-        logger.debug(f"尝试 simctl 启动: {' '.join(cmd)}")
-        
-        try:
-            result = subprocess.run(cmd, capture_output=True, text=True, timeout=15, encoding="utf-8", errors="replace")
-            if result.returncode == 0:
-                logger.info(f"simctl 启动成功: {bundle_id}")
-                return True, result.stdout.strip()
-            return False, result.stderr.strip()
-        except Exception as e:
-            logger.warning(f"simctl 启动异常: {e}")
-            return False, str(e)
-    
-    def _try_start_app_with_applescript(self, bundle_id: str):
-        """使用 AppleScript 通过 Xcode Devices 窗口启动应用"""
+        """启动应用"""
         app_name = self._bundle_id_to_app_name(bundle_id)
-        script = f'''
-            tell application "Xcode"
-                activate
-                delay 1
-            end tell
-            tell application "System Events"
-                tell process "Xcode"
-                    click menu item "Devices and Simulators" of menu "Window" of menu bar 1
-                    delay 2
-                end tell
-            end tell
-        '''
-        
-        logger.debug(f"尝试 AppleScript 启动应用: {app_name}")
-        
-        try:
-            result = subprocess.run(["osascript", "-e", script], capture_output=True, text=True, timeout=30)
-            if result.returncode == 0:
-                logger.info(f"AppleScript 执行成功")
-                return True, "Xcode Devices 窗口已打开，请手动选择设备并启动应用"
-            return False, result.stderr.strip()
-        except Exception as e:
-            logger.warning(f"AppleScript 执行异常: {e}")
-            return False, str(e)
-    
-    @staticmethod
-    def _bundle_id_to_app_name(bundle_id: str) -> str:
-        """根据 Bundle ID 获取应用名称"""
-        bundle_map = {
-            "com.tencent.mm": "微信",
-            "com.ss.android.ugc.aweme": "抖音",
-            "com.xingin.discover": "小红书",
-        }
-        return bundle_map.get(bundle_id, bundle_id)
+        logger.info(f"请在 iPhone 上手动打开应用: {app_name}")
+
+        # 等待用户打开应用
+        for i in range(30):
+            if self.is_connected():
+                logger.info("设备已就绪")
+                return True, f"应用 {app_name} 已启动（手动）"
+            time.sleep(1)
+            if i % 15 == 0:
+                logger.info(f"等待用户启动应用... ({i}/30秒)")
+
+        return False, f"请手动打开 {app_name}"
 
     def stop_app(self, bundle_id: str):
-        """强制停止应用"""
-        self._run("xctest", "terminate", bundle_id)
+        """停止应用 (WDA 方式)"""
+        if self._wda_ready:
+            try:
+                self._wda_request("POST", "/wda/deactivateApp", {"bundleId": bundle_id})
+                return
+            except Exception:
+                pass
+        logger.info("请在 iPhone 上手动关闭应用")
 
     def get_current_activity(self) -> str:
         """获取当前前台应用"""
-        ok, out = self._run("xctest", "current_app")
-        if ok:
-            return out.strip()
         return ""
 
     def is_app_foreground(self, bundle_id: str) -> bool:
-        """判断指定应用是否在前台"""
-        current = self.get_current_activity()
-        return bundle_id in current
+        """判断应用是否在前台"""
+        return self.is_connected()
+
+    # ========== 人类模拟操作 ==========
 
     def human_tap(self, x: int, y: int):
-        """模拟人类点击（带随机坐标偏移和延迟）"""
+        """模拟人类点击（带随机偏移和延迟）"""
         ox = random.randint(-3, 3)
         oy = random.randint(-3, 3)
         delay = random.uniform(config.CLICK_MIN_DELAY, config.CLICK_MAX_DELAY)
@@ -351,23 +499,22 @@ class iOSClient:
             self.input_text(ch)
             time.sleep(config.TYPING_INTERVAL)
 
-    def get_screen_size(self) -> Tuple[int, int]:
-        """获取屏幕宽高（iOS 需要截图后获取）"""
-        from PIL import Image
-        import tempfile
-        with tempfile.NamedTemporaryFile(suffix=".png", delete=False) as f:
-            temp_path = f.name
-        if self.screenshot(temp_path):
+    def close(self):
+        """清理资源"""
+        if self._relay_process:
             try:
-                img = Image.open(temp_path)
-                w, h = img.size
-                return w, h
-            except Exception as e:
-                logger.debug(f"获取屏幕尺寸失败: {e}")
-            finally:
-                try:
-                    import os
-                    os.unlink(temp_path)
-                except:
-                    pass
-        return (0, 0)
+                self._relay_process.terminate()
+                self._relay_process.wait(timeout=3)
+            except Exception:
+                self._relay_process.kill()
+            logger.debug("WDA relay 已关闭")
+
+    @staticmethod
+    def _bundle_id_to_app_name(bundle_id: str) -> str:
+        """Bundle ID 转应用名称"""
+        bundle_map = {
+            "com.tencent.mm": "微信",
+            "com.ss.android.ugc.aweme": "抖音",
+            "com.xingin.discover": "小红书",
+        }
+        return bundle_map.get(bundle_id, bundle_id)

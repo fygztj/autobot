@@ -201,38 +201,26 @@ class DeviceManager:
             ios_devices = self._scan_ios_devices()
             for udid in ios_devices:
                 devices.append({"id": udid, "os_type": "iOS"})
-        else:
-            logger.debug("iOS 设备扫描已禁用")
         
-        # 如果找到设备，打印汇总日志
-        if devices:
-            logger.info(f"Android 设备扫描结果: {len(android_devices)} 台")
-            if config.ENABLE_IOS_SCAN:
-                logger.info(f"iOS 设备扫描结果: {len(ios_devices)} 台")
-            logger.info(f"总设备数: {len(devices)}")
         return devices
 
     def refresh(self):
         """刷新设备列表，处理连接/断开"""
         current_devices = self.scan_devices()
         current_ids = {d["id"] for d in current_devices}
-        has_devices = len(self._devices) > 0 or len(current_ids) > 0
-
-        if has_devices:
-            logger.info("开始刷新设备列表...")
 
         with self._lock:
             known_ids = set(self._devices.keys())
             
-            if has_devices:
-                logger.info(f"已知设备: {list(known_ids)}")
-                logger.info(f"当前发现: {list(current_ids)}")
-
+            # 检测是否有设备状态变化
+            has_changes = False
+            
             # 新增设备
             for device_info in current_devices:
                 dev_id = device_info["id"]
                 dev_os = device_info["os_type"]
                 if dev_id not in known_ids:
+                    has_changes = True
                     logger.info(f"发现新设备: {dev_os} {dev_id}")
                     try:
                         device = Device(dev_id, dev_os)
@@ -247,9 +235,6 @@ class DeviceManager:
 
             # 断开设备
             disconnected_devices = known_ids - current_ids
-            if disconnected_devices:
-                logger.info(f"检测到 {len(disconnected_devices)} 台设备可能断开: {list(disconnected_devices)}")
-            
             for dev_id in disconnected_devices:
                 # 二次验证设备是否真的断开
                 still_connected = False
@@ -258,13 +243,15 @@ class DeviceManager:
                         device = self._devices[dev_id]
                         still_connected = device.client.is_connected()
                         if still_connected:
-                            logger.info(f"设备 {dev_id} 仍在连接，保留")
+                            logger.debug(f"设备 {dev_id} 仍在连接，保留")
                         else:
+                            has_changes = True
                             logger.info(f"设备 {dev_id} 确认断开")
                 except Exception as e:
                     logger.warning(f"验证设备 {dev_id} 连接状态时出错: {e}")
                 
                 if not still_connected:
+                    has_changes = True
                     logger.info(f"删除断开的设备: {dev_id}")
                     del self._devices[dev_id]
                     if self._on_device_disconnected:
@@ -280,10 +267,7 @@ class DeviceManager:
                         device.refresh_info()
                         self._last_info_refresh[dev_id] = current_time
                     except Exception as e:
-                        logger.warning(f"刷新设备 {dev_id} 信息失败: {e}")
-        
-        if has_devices or len(self._devices) > 0:
-            logger.info(f"刷新完成，当前设备数: {len(self._devices)}")
+                        logger.debug(f"刷新设备 {dev_id} 信息失败: {e}")
 
     def start_scan(self):
         """启动持续扫描线程"""
