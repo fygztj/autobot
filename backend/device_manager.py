@@ -140,7 +140,10 @@ class DeviceManager:
                         tidevice_module_path = path
                         break
             else:  # macOS/Linux
-                python_path = "/usr/local/bin/python3" if shutil.which("/usr/local/bin/python3") else shutil.which("python3")
+                # 使用正确的 Python 路径（tidevice 安装在用户目录的 Python 环境中）
+                python_path = "/Users/gzt/Library/Python/3.8/bin/python3"
+                if not os.path.exists(python_path):
+                    python_path = shutil.which("python3") or shutil.which("python") or "python"
                 tidevice_module_path = "/Users/gzt/Library/Python/3.8/lib/python/site-packages"
             
             if not python_path:
@@ -150,15 +153,25 @@ class DeviceManager:
             env = os.environ.copy()
             env["REQUESTS_CA_BUNDLE"] = ""
             env["CURL_CA_BUNDLE"] = ""
+            env["PYTHONIOENCODING"] = "utf-8"
+            # 设置 TIDEVICE_HOME 到项目目录，避免权限问题
+            backend_dir = os.path.dirname(os.path.abspath(__file__))
+            project_dir = os.path.dirname(backend_dir)
+            env["TIDEVICE_HOME"] = os.path.join(project_dir, "data", "app_data", "tidevice")
+            # 添加用户 Python 路径到 PATH
+            env["PATH"] = "/Users/gzt/Library/Python/3.8/bin:" + env.get("PATH", "")
+            # 设置 PYTHONPATH
+            env["PYTHONPATH"] = "/Users/gzt/Library/Python/3.8/lib/python/site-packages:" + env.get("PYTHONPATH", "")
             
             if system == "Windows":
                 env["HOME"] = os.environ.get("TEMP", "/tmp")
-                env["PYTHONIOENCODING"] = "utf-8"
             else:
                 env["HOME"] = "/tmp"
             
-            # 使用 python -m tidevice 的方式调用
-            cmd = [python_path, "-m", "tidevice", "list"]
+            # 直接使用 tidevice 命令
+            tidevice_path = shutil.which("tidevice") or "/Users/gzt/Library/Python/3.8/bin/tidevice"
+            cmd = [tidevice_path, "list"]
+
             
             # 使用 errors="replace" 处理编码问题
             result = subprocess.run(
@@ -172,6 +185,7 @@ class DeviceManager:
             # 处理可能为 None 的情况
             stdout = result.stdout.strip() if result.stdout else ""
             stderr = result.stderr.strip() if result.stderr else ""
+
             
             # 处理可能为 None 的情况
             lines = stdout.split("\n") if stdout else []
@@ -194,14 +208,19 @@ class DeviceManager:
         """扫描当前连接的所有设备，返回 [{id, os_type}] 列表"""
         devices = []
         android_devices = self._scan_android_devices()
+        logger.info(f"Android 设备扫描结果: {len(android_devices)} 台")
         for serial in android_devices:
             devices.append({"id": serial, "os_type": "Android"})
         
         if config.ENABLE_IOS_SCAN:
             ios_devices = self._scan_ios_devices()
+            logger.info(f"iOS 设备扫描结果: {len(ios_devices)} 台 - {ios_devices}")
             for udid in ios_devices:
                 devices.append({"id": udid, "os_type": "iOS"})
+        else:
+            logger.info("iOS 设备扫描已禁用")
         
+        logger.info(f"总设备数: {len(devices)}")
         return devices
 
     def refresh(self):

@@ -152,10 +152,14 @@ class TaskRunner:
 
     def _execute_advanced_task(self, task, device) -> bool:
         """执行高级任务（主题词浏览+互动）"""
-        executor = AdvancedTaskExecutor(device, task.advanced_config)
-        executor.execute()
-        logger.info(f"高级任务 [{task.name}] 执行完成")
-        return True
+        try:
+            executor = AdvancedTaskExecutor(device, task.advanced_config)
+            executor.execute()
+            logger.info(f"高级任务 [{task.name}] 执行完成")
+            return True
+        except Exception as e:
+            logger.error(f"高级任务 [{task.name}] 执行失败: {e}")
+            return False
 
     def cancel(self, task_id: str):
         """取消正在执行的任务"""

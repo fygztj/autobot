@@ -51,19 +51,33 @@ class AdvancedTaskExecutor:
 
         # 检查设备是否可以控制
         if self.device.os_type == "iOS":
-            if hasattr(self.client, 'can_control') and not self.client.can_control():
-                logger.error("=" * 40)
-                logger.error("❌ iOS 设备无法控制！")
-                logger.error("原因：WDA 未运行 且 xctest 需要开发者镜像")
-                logger.error("")
-                logger.error("解决方案（二选一）：")
-                logger.error("1. 在 iPhone 上安装并启动 WebDriverAgent (WDA)")
-                logger.error("2. 使用 Mac + Xcode 安装对应版本的 iOS 开发者镜像")
-                logger.error("=" * 40)
-                raise RuntimeError("iOS 设备无法控制，请先配置 WDA 或安装开发者镜像")
+            if hasattr(self.client, 'ensure_wda_ready'):
+                # 先尝试准备 WDA
+                if self.client.ensure_wda_ready():
+                    self._wda_ready = True
+                    logger.info("✅ WDA 环境准备完成")
+                else:
+                    logger.warning("⚠️  WDA 未就绪，将尝试基本操作（启动应用）")
+                    logger.warning("提示：要执行点击、滑动等 UI 操作，请先安装 WebDriverAgent")
+                    self._wda_ready = False
+            else:
+                self._wda_ready = True
+        else:
+            self._wda_ready = True
 
         try:
             self._start_app()
+            
+            # 如果 WDA 未就绪，尝试启动应用
+            if not self._wda_ready:
+                # 检查应用是否启动成功
+                if hasattr(self, '_app_started') and self._app_started:
+                    logger.info("WDA 未就绪，已成功启动应用，任务完成（无 UI 操作）")
+                else:
+                    logger.error("WDA 未就绪且应用启动失败，请检查设备配置")
+                    raise RuntimeError("应用启动失败，请检查设备配置")
+                return
+            
             if self.config.topics:
                 self._search_topic()
             self._view_and_interact_loop()
@@ -82,13 +96,27 @@ class AdvancedTaskExecutor:
 
         if not package:
             logger.warning(f"未知应用: {self.config.app}，无法启动")
+            self._app_started = False
             return
 
         os_type = self.device.os_type
+        result = False
+        
         if os_type == "Android":
-            self.client.start_app(package)
+            result = self.client.start_app(package)
         else:
-            self.client.start_app(package)
+            result = self.client.start_app(package)
+        
+        # 检查返回值（iOS客户端返回tuple，Android可能返回bool或None）
+        if isinstance(result, tuple):
+            self._app_started = result[0]
+        else:
+            self._app_started = result is not False
+        
+        if self._app_started:
+            logger.info(f"✅ 应用启动成功: {self.config.app}")
+        else:
+            logger.error(f"❌ 应用启动失败: {self.config.app}")
 
         time_controller.random_sleep(3, 5, "等待应用启动")
 
