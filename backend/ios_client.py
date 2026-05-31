@@ -596,33 +596,32 @@ class iOSClient:
         app_name = self._bundle_id_to_app_name(bundle_id)
         logger.info(f"启动应用: {app_name} ({bundle_id})")
 
-        # 首先尝试使用 WDA 启动（不需要开发者镜像）
-        if self._is_wda_installed():
-            logger.info("WDA 已安装，尝试使用 WDA 启动应用")
-            # 先启动 WDA
-            if self._start_wda():
-                # 使用 WDA 启动应用
-                ok, result = self._wda_request("POST", "/wda/launchApp", {"bundleId": bundle_id})
-                if ok:
-                    logger.info(f"应用 {app_name} 已通过 WDA 启动")
+        # 步骤1：检查 WDA 是否已经在运行（用户手动通过 Xcode 启动）
+        if self._check_wda_status():
+            logger.info("WDA 已在设备上运行，直接使用 WDA 启动应用")
+            try:
+                req_body = json.dumps({"bundleId": bundle_id}).encode()
+                req = urllib.request.Request(
+                    f"{self._wda_url}/wda/launchApp",
+                    data=req_body,
+                    headers={"Content-Type": "application/json"}
+                )
+                with urllib.request.urlopen(req, timeout=10) as resp:
+                    logger.info(f"应用 {app_name} 已通过 WDA HTTP API 启动")
                     return True, f"应用 {app_name} 已启动"
-                else:
-                    logger.warning(f"WDA 启动应用失败，尝试直接使用 WDA HTTP API")
-                    # 尝试直接调用 WDA 的 launchApp 接口（不通过 session）
-                    try:
-                        req_body = json.dumps({"bundleId": bundle_id}).encode()
-                        req = urllib.request.Request(
-                            f"{self._wda_url}/wda/launchApp",
-                            data=req_body,
-                            headers={"Content-Type": "application/json"}
-                        )
-                        with urllib.request.urlopen(req, timeout=10) as resp:
-                            logger.info(f"应用 {app_name} 已通过 WDA HTTP API 启动")
-                            return True, f"应用 {app_name} 已启动"
-                    except Exception as e:
-                        logger.warning(f"WDA HTTP API 启动失败: {e}")
+            except Exception as e:
+                logger.warning(f"WDA HTTP API 启动失败: {e}")
 
-        # 回退到 tidevice launch（需要开发者镜像）
+        # 步骤2：检查 WDA 是否已安装
+        if self._is_wda_installed():
+            logger.info("WDA 已安装，但未运行")
+            logger.info("💡 请在 Xcode 中启动 WebDriverAgentRunner 到您的设备")
+            logger.info("   1. 打开 WebDriverAgent.xcodeproj")
+            logger.info("   2. 选择您的 iOS 设备")
+            logger.info("   3. 点击 Run 按钮")
+            logger.info("   4. 等待 WDA 启动后再执行任务")
+
+        # 步骤3：回退到 tidevice launch（需要开发者镜像）
         logger.info("回退到 tidevice launch 方式")
         ok, out = self._run(["launch", bundle_id], timeout=15)
         if ok:
