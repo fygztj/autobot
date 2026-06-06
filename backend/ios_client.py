@@ -208,7 +208,17 @@ class iOSClient:
 
         logger.info(f"正在准备 WDA 环境...")
         
-        # 步骤1：检查 WDA 是否已安装
+        # 步骤1：先检查 WDA 是否已经在运行（用户可能通过 Xcode 启动了）
+        if self._check_wda_status():
+            logger.info("WDA 已经在设备上运行（用户可能通过 Xcode 启动）")
+            # 尝试获取或创建 session
+            if self._create_wda_session():
+                logger.info("WDA 环境准备完成")
+                return True
+            logger.warning("WDA 运行中但无法创建 session")
+            return False
+        
+        # 步骤2：检查 WDA 是否已安装
         if not self._is_wda_installed():
             logger.error("❌ WDA 未安装在设备上！")
             logger.error("请使用以下方法之一安装 WDA：")
@@ -217,12 +227,12 @@ class iOSClient:
             logger.error("   命令: tidevice install /path/to/WebDriverAgentRunner.ipa")
             return False
 
-        # 步骤2：启动 WDA 服务（使用 wdaproxy）
+        # 步骤3：启动 WDA 服务（使用 wdaproxy）
         if not self._start_wda():
             logger.error("WDA 启动失败")
             return False
 
-        # 步骤3：创建 session
+        # 步骤4：创建 session
         if not self._create_wda_session():
             logger.error("WDA Session 创建失败")
             return False
@@ -346,7 +356,12 @@ class iOSClient:
 
     def _create_wda_session(self) -> bool:
         """创建 WDA Session"""
-        for i in range(5):
+        # 首先尝试获取已存在的 session（WDA 可能已经有 session 了）
+        if self._get_existing_session():
+            return True
+        
+        # 如果没有已存在的 session，尝试创建新的
+        for i in range(3):
             try:
                 req_body = json.dumps({
                     "capabilities": {
@@ -371,12 +386,15 @@ class iOSClient:
                         return True
             except urllib.error.HTTPError as e:
                 if e.code == 400:
-                    # Session 可能已存在，尝试获取
-                    return self._get_existing_session()
+                    # Session 可能已存在，再次尝试获取
+                    if self._get_existing_session():
+                        return True
             except Exception as e:
-                logger.debug(f"创建 Session 失败 ({i+1}/5): {e}")
+                logger.debug(f"创建 Session 失败 ({i+1}/3): {e}")
             time.sleep(2)
-        return False
+        
+        # 最后再尝试一次获取已存在的 session
+        return self._get_existing_session()
 
     def _get_existing_session(self) -> bool:
         """获取已存在的 Session"""
@@ -497,7 +515,22 @@ class iOSClient:
         if not self.ensure_wda_ready():
             raise RuntimeError("WDA 未就绪，无法执行点击操作")
 
-        ok, _ = self._wda_request("POST", "/wda/tap/0", {"x": x, "y": y})
+        actions = {
+            "actions": [
+                {
+                    "type": "pointer",
+                    "id": "finger1",
+                    "parameters": {"pointerType": "touch"},
+                    "actions": [
+                        {"type": "pointerMove", "x": x, "y": y},
+                        {"type": "pointerDown", "x": x, "y": y},
+                        {"type": "pause", "duration": 0.1},
+                        {"type": "pointerUp", "x": x, "y": y}
+                    ]
+                }
+            ]
+        }
+        ok, _ = self._wda_request("POST", "/actions", actions)
         if not ok:
             raise RuntimeError(f"iOS 点击失败: ({x}, {y})")
 
@@ -506,11 +539,35 @@ class iOSClient:
         if not self.ensure_wda_ready():
             raise RuntimeError("WDA 未就绪，无法执行滑动操作")
 
-        ok, _ = self._wda_request("POST", "/wda/dragfromtoforduration", {
-            "fromX": x1, "fromY": y1, 
-            "toX": x2, "toY": y2,
-            "duration": duration_ms / 1000.0
-        })
+        duration = duration_ms / 1000.0
+        steps = max(2, int(duration_ms / 50))
+        
+        actions_list = []
+        for i in range(steps + 1):
+            t = i / steps
+            x = int(x1 + (x2 - x1) * t)
+            y = int(y1 + (y2 - y1) * t)
+            if i == 0:
+                actions_list.append({"type": "pointerMove", "x": x, "y": y})
+                actions_list.append({"type": "pointerDown", "x": x, "y": y})
+            elif i == steps:
+                actions_list.append({"type": "pointerUp", "x": x, "y": y})
+            else:
+                actions_list.append({"type": "pointerMove", "x": x, "y": y})
+            if i < steps:
+                actions_list.append({"type": "pause", "duration": duration / steps})
+
+        actions = {
+            "actions": [
+                {
+                    "type": "pointer",
+                    "id": "finger1",
+                    "parameters": {"pointerType": "touch"},
+                    "actions": actions_list
+                }
+            ]
+        }
+        ok, _ = self._wda_request("POST", "/actions", actions)
         if not ok:
             raise RuntimeError("iOS 滑动失败")
 
@@ -519,11 +576,23 @@ class iOSClient:
         if not self.ensure_wda_ready():
             raise RuntimeError("WDA 未就绪，无法执行长按操作")
 
-        ok, _ = self._wda_request("POST", "/wda/dragfromtoforduration", {
-            "fromX": x, "fromY": y, 
-            "toX": x, "toY": y,
-            "duration": duration_ms / 1000.0
-        })
+        duration = duration_ms / 1000.0
+        actions = {
+            "actions": [
+                {
+                    "type": "pointer",
+                    "id": "finger1",
+                    "parameters": {"pointerType": "touch"},
+                    "actions": [
+                        {"type": "pointerMove", "x": x, "y": y},
+                        {"type": "pointerDown", "x": x, "y": y},
+                        {"type": "pause", "duration": duration},
+                        {"type": "pointerUp", "x": x, "y": y}
+                    ]
+                }
+            ]
+        }
+        ok, _ = self._wda_request("POST", "/actions", actions)
         if not ok:
             raise RuntimeError("iOS 长按失败")
 
@@ -598,28 +667,56 @@ class iOSClient:
 
         # 步骤1：检查 WDA 是否已经在运行（用户手动通过 Xcode 启动）
         if self._check_wda_status():
-            logger.info("WDA 已在设备上运行，直接使用 WDA 启动应用")
-            try:
-                req_body = json.dumps({"bundleId": bundle_id}).encode()
-                req = urllib.request.Request(
-                    f"{self._wda_url}/wda/launchApp",
-                    data=req_body,
-                    headers={"Content-Type": "application/json"}
-                )
-                with urllib.request.urlopen(req, timeout=10) as resp:
-                    logger.info(f"应用 {app_name} 已通过 WDA HTTP API 启动")
-                    return True, f"应用 {app_name} 已启动"
-            except Exception as e:
-                logger.warning(f"WDA HTTP API 启动失败: {e}")
+            logger.info("WDA 已在设备上运行，尝试使用 WDA 启动应用")
+            
+            # 尝试多种 WDA API 端点（按优先级排序）
+            wda_endpoints = [
+                f"{self._wda_url}/wda/activateApp",
+                f"{self._wda_url}/wda/launchApp",
+                f"{self._wda_url}/wda/launch",
+                f"{self._wda_url}/appium/device/launchApp"
+            ]
+            for endpoint in wda_endpoints:
+                try:
+                    req_body = json.dumps({"bundleId": bundle_id}).encode()
+                    req = urllib.request.Request(
+                        endpoint,
+                        data=req_body,
+                        headers={"Content-Type": "application/json"}
+                    )
+                    with urllib.request.urlopen(req, timeout=10) as resp:
+                        logger.info(f"应用 {app_name} 已通过 WDA HTTP API 启动: {endpoint}")
+                        return True, f"应用 {app_name} 已启动"
+                except Exception as e:
+                    logger.debug(f"WDA 端点 {endpoint} 启动失败: {e}")
+
+            # 如果有 session，尝试通过 session 启动
+            if self._wda_session_id:
+                session_endpoints = [
+                    f"{self._wda_url}/session/{self._wda_session_id}/wda/activateApp",
+                    f"{self._wda_url}/session/{self._wda_session_id}/wda/launchApp",
+                    f"{self._wda_url}/session/{self._wda_session_id}/wda/launch",
+                    f"{self._wda_url}/session/{self._wda_session_id}/appium/device/launchApp"
+                ]
+                for endpoint in session_endpoints:
+                    try:
+                        req_body = json.dumps({"bundleId": bundle_id}).encode()
+                        req = urllib.request.Request(
+                            endpoint,
+                            data=req_body,
+                            headers={"Content-Type": "application/json"}
+                        )
+                        with urllib.request.urlopen(req, timeout=10) as resp:
+                            logger.info(f"应用 {app_name} 已通过 WDA Session API 启动: {endpoint}")
+                            return True, f"应用 {app_name} 已启动"
+                    except Exception as e:
+                        logger.debug(f"WDA Session 端点 {endpoint} 启动失败: {e}")
+
+            logger.warning("所有 WDA API 端点均无法启动应用")
 
         # 步骤2：检查 WDA 是否已安装
         if self._is_wda_installed():
-            logger.info("WDA 已安装，但未运行")
-            logger.info("💡 请在 Xcode 中启动 WebDriverAgentRunner 到您的设备")
-            logger.info("   1. 打开 WebDriverAgent.xcodeproj")
-            logger.info("   2. 选择您的 iOS 设备")
-            logger.info("   3. 点击 Run 按钮")
-            logger.info("   4. 等待 WDA 启动后再执行任务")
+            logger.info("WDA 已安装，但未运行或 API 不可用")
 
         # 步骤3：回退到 tidevice launch（需要开发者镜像）
         logger.info("回退到 tidevice launch 方式")
@@ -628,16 +725,24 @@ class iOSClient:
             logger.info(f"应用 {app_name} 已通过 tidevice 启动")
             return True, f"应用 {app_name} 已启动"
         
-        logger.error(f"❌ 启动失败: {out}")
-        logger.error("💡 可能原因：")
-        logger.error("   1. 缺少 iOS 18.5 开发者镜像（公开仓库未提供）")
-        logger.error("   2. 网络问题无法下载镜像")
-        logger.error("   3. 设备未信任电脑")
-        logger.error("💡 解决方案：")
-        logger.error("   1. 在 Mac 上安装 Xcode 16+，获取开发者镜像")
-        logger.error("   2. 将镜像复制到: /Users/gzt/project/autobot/data/app_data/tidevice/device-support/")
-        logger.error("   3. 确保 WDA 已正确安装并在设备上运行")
-        return False, f"启动失败: {out}"
+        # 步骤4：检查是否是开发者镜像问题，如果是，提示用户手动启动
+        if "DeveloperDiskImage" in str(out) or "timeout" in str(out) or "image not found" in str(out).lower():
+            logger.warning(f"⚠️  无法自动启动应用: {app_name}")
+            logger.warning("💡 原因：缺少 iOS 18.5 开发者镜像")
+            logger.warning("💡 解决方案：请在设备上手动打开「小红书」应用")
+            logger.warning("   打开后，任务将继续执行后续操作（点击、滑动等）")
+            return False, f"需要手动启动应用: {app_name}"
+        else:
+            logger.error(f"❌ 启动失败: {out}")
+            logger.error("💡 可能原因：")
+            logger.error("   1. 缺少 iOS 18.5 开发者镜像（公开仓库未提供）")
+            logger.error("   2. 网络问题无法下载镜像")
+            logger.error("   3. 设备未信任电脑")
+            logger.error("💡 解决方案：")
+            logger.error("   1. 在 Mac 上安装 Xcode 16+，获取开发者镜像")
+            logger.error("   2. 将镜像复制到: /Users/gzt/project/autobot/data/app_data/tidevice/device-support/")
+            logger.error("   3. 确保 WDA 已正确安装并在设备上运行")
+            return False, f"启动失败: {out}"
 
     def stop_app(self, bundle_id: str):
         """停止应用"""
@@ -651,10 +756,21 @@ class iOSClient:
 
     def get_current_activity(self) -> str:
         """获取当前前台应用"""
+        # 首先尝试使用已有的 session
         if self._wda_ready:
             ok, result = self._wda_request("GET", "/wda/activeAppInfo")
             if ok and result.get("value"):
                 return result["value"].get("bundleId", "")
+        
+        # 如果没有 session 或失败，直接访问 WDA API（无需 session）
+        try:
+            req = urllib.request.Request(f"{self._wda_url}/wda/activeAppInfo")
+            with urllib.request.urlopen(req, timeout=5) as resp:
+                data = json.loads(resp.read().decode())
+                return data.get("value", {}).get("bundleId", "")
+        except Exception:
+            pass
+        
         return ""
 
     def is_app_foreground(self, bundle_id: str) -> bool:

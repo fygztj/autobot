@@ -17,6 +17,7 @@ from backend.config import config
 from backend.device_manager import device_manager
 from backend.tasks.scheduler import task_scheduler
 from backend.vision.ocr import ocr_engine
+from backend.api.routes import app
 
 
 def setup_logging():

@@ -19,6 +19,7 @@ from backend.vision.element_finder import ElementFinder
 from backend.device_manager import Device
 from backend.apps.xiaohongshu import XiaohongshuApp
 from backend.apps.douyin import DouyinApp
+from backend.config import config
 
 
 class AdvancedTaskExecutor:
@@ -78,6 +79,16 @@ class AdvancedTaskExecutor:
                     raise RuntimeError("应用启动失败，请检查设备配置")
                 return
             
+            # 检查应用是否启动成功（即使 WDA 就绪，应用也可能未启动）
+            if hasattr(self, '_app_started') and not self._app_started:
+                logger.warning("⚠️  应用自动启动失败，请确保应用已在设备上手动打开")
+                logger.warning("   正在检查当前前台应用...")
+                current_app = self.client.get_current_activity()
+                logger.info(f"当前前台应用: {current_app}")
+                if current_app != config.APP_PACKAGES.get(self.config.app):
+                    logger.warning("提示：请在设备上手动打开目标应用，然后重新执行任务")
+                    raise RuntimeError("应用未启动，请手动打开应用后重新执行任务")
+            
             if self.config.topics:
                 self._search_topic()
             self._view_and_interact_loop()
@@ -86,7 +97,7 @@ class AdvancedTaskExecutor:
             raise
 
     def _start_app(self):
-        """启动应用"""
+        """启动应用（优先检查是否已在前台）"""
         from backend.config import config
 
         logger.info(f"启动应用: {self.config.app}")
@@ -99,6 +110,17 @@ class AdvancedTaskExecutor:
             self._app_started = False
             return
 
+        # 先检查应用是否已经在前台运行
+        try:
+            current_app = self.client.get_current_activity()
+            if current_app == package:
+                logger.info(f"✅ 应用已在前台运行: {self.config.app}")
+                self._app_started = True
+                return
+        except Exception as e:
+            logger.debug(f"检查前台应用失败: {e}")
+
+        # 应用不在前台，尝试启动
         os_type = self.device.os_type
         result = False
         
@@ -116,7 +138,17 @@ class AdvancedTaskExecutor:
         if self._app_started:
             logger.info(f"✅ 应用启动成功: {self.config.app}")
         else:
-            logger.error(f"❌ 应用启动失败: {self.config.app}")
+            # 启动失败，再次检查前台应用（用户可能手动打开了）
+            try:
+                current_app = self.client.get_current_activity()
+                if current_app == package:
+                    logger.info(f"⚠️  应用启动API失败，但应用已在前台（用户手动打开）")
+                    self._app_started = True
+                else:
+                    logger.error(f"❌ 应用启动失败: {self.config.app}")
+            except Exception as e:
+                logger.debug(f"再次检查前台应用失败: {e}")
+                logger.error(f"❌ 应用启动失败: {self.config.app}")
 
         time_controller.random_sleep(3, 5, "等待应用启动")
 

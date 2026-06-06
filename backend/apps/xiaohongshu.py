@@ -12,7 +12,7 @@ class XiaohongshuApp(BaseApp):
 
     _ACTIONS_SCHEMA = [
         {"type": "start_app", "label": "启动小红书",
-         "params": {"package": "com.xingin.xhs"}},
+         "params": {"package": package}},
         {"type": "swipe_up", "label": "下一个笔记",
          "params": {"distance": 0.65}},
         {"type": "swipe_up_multiple", "label": "连续浏览笔记",
