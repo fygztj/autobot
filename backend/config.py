@@ -24,6 +24,8 @@ class Config:
     TASK_DB: str = os.path.join(BASE_DIR, "data", "tasks.json")
     # 跨平台临时目录（用于存储 tidevice SSL 证书等）
     TIDEVICE_DIR: str = os.path.join(APP_DATA_DIR, "tidevice")
+    # WDA 项目路径
+    WDA_PROJECT_PATH: str = os.path.join(BASE_DIR, "..", "WebDriverAgent", "WebDriverAgent.xcodeproj")
 
     # --- ADB / 设备 ---
     ADB_PATH: str = ""  # 空字符串表示自动查找

@@ -292,7 +292,7 @@ class iOSClient:
             logger.warning(f"启动端口转发失败: {e}")
 
     def _start_wda(self) -> bool:
-        """启动 WDA 服务（使用 wdaproxy，支持指定 Bundle ID）"""
+        """启动 WDA 服务（优先使用 xcodebuild，失败时回退到 wdaproxy）"""
         if self._wda_process:
             try:
                 self._wda_process.terminate()
@@ -300,6 +300,57 @@ class iOSClient:
             except Exception:
                 pass
 
+        # 尝试使用 xcodebuild 启动（更可靠）
+        if self._start_wda_with_xcodebuild():
+            return True
+        
+        # 如果 xcodebuild 失败，回退到 wdaproxy
+        logger.warning("xcodebuild 启动失败，尝试使用 wdaproxy")
+        return self._start_wda_with_wdaproxy()
+
+    def _start_wda_with_xcodebuild(self) -> bool:
+        """使用 xcodebuild test-without-building 启动 WDA"""
+        try:
+            # 构建 xcodebuild 命令
+            cmd = [
+                "xcodebuild",
+                "test-without-building",
+                "-project", config.WDA_PROJECT_PATH,
+                "-scheme", "WebDriverAgentRunner",
+                "-destination", f'id={self.udid}',
+                "-derivedDataPath", "/tmp/wda_build"
+            ]
+            
+            logger.info(f"使用 xcodebuild 启动 WDA: {' '.join(cmd)}")
+
+            # 启动进程（非阻塞模式）
+            self._wda_process = subprocess.Popen(
+                cmd,
+                stdout=subprocess.PIPE,
+                stderr=subprocess.PIPE,
+                text=True
+            )
+
+            # 等待 WDA 启动（最多等待 60 秒）
+            for i in range(30):
+                if self._check_wda_status():
+                    logger.info("✅ WDA 通过 xcodebuild 启动成功")
+                    return True
+                time.sleep(2)
+            
+            # 检查进程是否有错误输出
+            if self._wda_process.poll() is not None:
+                stdout, stderr = self._wda_process.communicate(timeout=5)
+                if stderr:
+                    logger.warning(f"xcodebuild 输出: {stderr[-2000:] if len(stderr) > 2000 else stderr}")
+            
+            return False
+        except Exception as e:
+            logger.debug(f"xcodebuild 启动失败: {e}")
+            return False
+
+    def _start_wda_with_wdaproxy(self) -> bool:
+        """使用 wdaproxy 启动 WDA（作为备选方案）"""
         try:
             # 构建命令（支持指定 WDA Bundle ID）
             cmd = self._get_tidevice_cmd() + ["wdaproxy", "-p", str(self.WDA_PORT)]
