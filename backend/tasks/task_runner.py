@@ -58,6 +58,7 @@ class TaskRunner:
         self._running_tasks: Dict[str, threading.Thread] = {}
         self._cancel_flags: Dict[str, bool] = {}
         self._task_status: Dict[str, str] = {}  # task_id -> status
+        self._active_executors: Dict[str, object] = {}  # task_id -> AdvancedTaskExecutor
 
     def get_status(self, task_id: str) -> str:
         """获取任务执行状态"""
@@ -109,6 +110,7 @@ class TaskRunner:
         finally:
             device_manager.mark_idle(serial)
             self._cancel_flags.pop(task.task_id, None)
+            self._active_executors.pop(task.task_id, None)
             # 任务结束后延迟清除状态（保留状态显示一段时间）
             import threading
             def clear_status():
@@ -118,6 +120,11 @@ class TaskRunner:
 
     def _execute_normal_task(self, task, device) -> bool:
         """执行普通任务（基于动作列表）"""
+        # 在启动应用前先检查是否已取消
+        if self._cancel_flags.get(task.task_id):
+            logger.info(f"任务已取消: {task.name}")
+            return False
+
         client = device.client
         touch = TouchController(client)
         finder = ElementFinder(client)
@@ -126,6 +133,10 @@ class TaskRunner:
 
         if task.app:
             self._start_app_for_task(task.app, device)
+            # 启动应用后再次检查是否已取消（启动应用可能耗时较长）
+            if self._cancel_flags.get(task.task_id):
+                logger.info(f"任务在启动应用后被取消: {task.name}")
+                return False
 
         for i, action in enumerate(actions):
             if self._cancel_flags.get(task.task_id):
@@ -154,17 +165,27 @@ class TaskRunner:
         """执行高级任务（主题词浏览+互动）"""
         try:
             executor = AdvancedTaskExecutor(device, task.advanced_config)
+            self._active_executors[task.task_id] = executor
+            # 传入取消检查函数，让 executor 在执行循环中定期检查
+            executor.set_cancel_check(lambda: self._cancel_flags.get(task.task_id, False))
             executor.execute()
             logger.info(f"高级任务 [{task.name}] 执行完成")
             return True
         except Exception as e:
             logger.error(f"高级任务 [{task.name}] 执行失败: {e}")
             return False
+        finally:
+            self._active_executors.pop(task.task_id, None)
 
     def cancel(self, task_id: str):
         """取消正在执行的任务"""
         self._cancel_flags[task_id] = True
         self.set_status(task_id, self.TASK_STATUS_CANCELLED)
+        # 停止高级任务执行器（如果正在运行）
+        executor = self._active_executors.pop(task_id, None)
+        if executor:
+            executor.stop()
+            logger.info(f"已停止高级任务执行器: {task_id}")
 
     # ================== 动作处理方法 ==================
 
@@ -244,8 +265,17 @@ class TaskRunner:
             client.start_app(package, activity)
         else:  # iOS
             bundle_id = params.get("bundle_id", params.get("package"))
-            client.start_app(bundle_id)
-        touch.wait(2.0)  # 等待应用启动
+            # iOS: 不启动/激活应用，仅检测
+            current_app = ""
+            try:
+                current_app = client.get_current_activity()
+            except Exception:
+                pass
+            if current_app == bundle_id:
+                logger.info(f"✅ 应用 {bundle_id} 已在前台")
+            else:
+                logger.info(f"⚠️  应用 {bundle_id} 不在前台，请手动打开")
+        touch.wait(2.0)
 
     def _do_stop_app(self, touch: TouchController, finder, client, params, os_type):
         if os_type == "Android":
@@ -311,15 +341,17 @@ class TaskRunner:
         if os_type == "Android":
             client.start_app(package)
         else:  # iOS
-            bundle_id = package
-            logger.info(f"iOS 设备，尝试启动应用: {bundle_id}")
-            # 检查客户端是否有返回值
-            result = client.start_app(bundle_id)
-            if result is not None:
-                ok, out = result
-                logger.info(f"启动应用结果: ok={ok}, output={out}")
-                if not ok:
-                    logger.error(f"启动应用失败: {out}")
+            # iOS: 不启动/激活应用，仅检测是否在前台，由用户手动打开
+            current_app = ""
+            try:
+                current_app = client.get_current_activity()
+            except Exception:
+                pass
+            
+            if current_app == package:
+                logger.info(f"✅ 应用 {app_name} 已在前台运行")
+            else:
+                logger.info(f"⚠️  应用 {app_name} 不在前台，请手动打开")
         
         # 等待应用启动
         from backend.actions.touch import TouchController

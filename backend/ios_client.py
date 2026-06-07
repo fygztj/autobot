@@ -45,6 +45,8 @@ class iOSClient:
         self._wda_session_id: Optional[str] = None
         self._wda_ready = False
         self._wda_bundle_id: Optional[str] = None
+        self._current_target_bundle_id: Optional[str] = None
+        self._session_bound_to_bundle_id: Optional[str] = None
         self._relay_process: Optional[subprocess.Popen] = None
         self._wda_process: Optional[subprocess.Popen] = None
         self._screen_w = 0
@@ -201,43 +203,93 @@ class iOSClient:
 
     # ========== WDA 设置与通信 ==========
 
-    def ensure_wda_ready(self) -> bool:
-        """确保 WDA 已准备就绪（启动 wdaproxy）"""
+    def ensure_wda_ready(self, target_bundle_id: str = None) -> bool:
+        """确保 WDA 已准备就绪
+
+        iOS 17+: 先启动端口转发，检查 WDA；如未运行则尝试用 xcodebuild 启动
+        iOS < 17: 使用 tidevice wdaproxy 启动
+
+        Args:
+            target_bundle_id: 可选，目标应用的 bundleId。如果传入，WDA session 会绑定到该 app。
+        """
+        if self._wda_ready and target_bundle_id:
+            self._current_target_bundle_id = target_bundle_id
+            return True
         if self._wda_ready:
             return True
 
-        logger.info(f"正在准备 WDA 环境...")
-        
-        # 步骤1：先检查 WDA 是否已经在运行（用户可能通过 Xcode 启动了）
+        logger.info(f"[ensure_wda_ready] 正在准备 WDA 环境（目标 app: {target_bundle_id or 'WDA runner'}）")
+
+        # 步骤0：检测 iOS 版本，决定策略
+        ios_version = self._get_ios_version()
+        logger.info(f"[ensure_wda_ready] 检测到 iOS 版本: {ios_version}")
+
+        # 对于 iOS 17+，先启动端口转发，再检查 WDA
+        if ios_version and ios_version >= 17.0:
+            logger.info(f"[ensure_wda_ready] iOS {ios_version} >= 17.0，使用新方案")
+            # 启动端口转发（WDA 在设备上监听 8100，需要转发到电脑）
+            self._start_relay()
+            time.sleep(1)
+
+            # 检查 WDA 是否已在运行（用户可能在 Xcode 中启动了）
+            if self._check_wda_status():
+                logger.info("[ensure_wda_ready] ✅ WDA 已在运行")
+                if self._create_wda_session(target_bundle_id):
+                    if target_bundle_id:
+                        self._current_target_bundle_id = target_bundle_id
+                    logger.info("[ensure_wda_ready] ✅ WDA 环境准备完成")
+                    return True
+
+            # WDA 没在运行，尝试用 xcodebuild 启动
+            logger.info("[ensure_wda_ready] WDA 未运行，尝试用 xcodebuild 启动...")
+            if not self._start_wda_with_xcodebuild():
+                logger.error("[ensure_wda_ready] ❌ WDA 启动失败")
+                logger.error("提示：请在 Xcode 中打开 WebDriverAgent.xcodeproj，")
+                logger.error("      选择你的设备，按 Cmd+U 启动测试（WebDriverAgentRunner）")
+                logger.error("      WDA 启动后，再回到这里执行任务")
+                return False
+
+            # xcodebuild 启动成功，创建 session
+            if not self._create_wda_session(target_bundle_id):
+                logger.error("[ensure_wda_ready] ❌ WDA Session 创建失败")
+                return False
+
+            if target_bundle_id:
+                self._current_target_bundle_id = target_bundle_id
+
+            logger.info(f"[ensure_wda_ready] ✅ WDA 环境准备完成（目标 app: {target_bundle_id or 'WDA runner'}）")
+            return True
+
+        # iOS < 17: 使用传统方案
+        logger.info(f"[ensure_wda_ready] iOS {ios_version or '<unknown>'} < 17.0，使用传统方案")
+
+        # 步骤1：检查 WDA 是否已在运行（通过 HTTP API）
         if self._check_wda_status():
-            logger.info("WDA 已经在设备上运行（用户可能通过 Xcode 启动）")
-            # 尝试获取或创建 session
-            if self._create_wda_session():
-                logger.info("WDA 环境准备完成")
+            logger.info("[ensure_wda_ready] WDA 已在运行")
+            if self._create_wda_session(target_bundle_id):
+                if target_bundle_id:
+                    self._current_target_bundle_id = target_bundle_id
+                logger.info("[ensure_wda_ready] ✅ WDA 环境准备完成")
                 return True
-            logger.warning("WDA 运行中但无法创建 session")
-            return False
-        
-        # 步骤2：检查 WDA 是否已安装
-        if not self._is_wda_installed():
-            logger.error("❌ WDA 未安装在设备上！")
-            logger.error("请使用以下方法之一安装 WDA：")
-            logger.error("1. 使用 Mac + Xcode 编译并安装 WDA")
-            logger.error("2. 使用已签名的 WDA.ipa 文件安装")
-            logger.error("   命令: tidevice install /path/to/WebDriverAgentRunner.ipa")
+            logger.warning("[ensure_wda_ready] WDA 运行中但无法创建 session")
             return False
 
-        # 步骤3：启动 WDA 服务（使用 wdaproxy）
+        # 步骤2：启动 WDA 服务
+        logger.info("[ensure_wda_ready] 启动 WDA 服务...")
         if not self._start_wda():
-            logger.error("WDA 启动失败")
+            logger.error("[ensure_wda_ready] ❌ WDA 启动失败")
+            logger.error("提示：请确保 WebDriverAgent 已通过 Xcode 安装到设备上")
             return False
 
-        # 步骤4：创建 session
-        if not self._create_wda_session():
-            logger.error("WDA Session 创建失败")
+        # 步骤3：创建 session
+        if not self._create_wda_session(target_bundle_id):
+            logger.error("[ensure_wda_ready] ❌ WDA Session 创建失败")
             return False
 
-        logger.info("WDA 环境准备完成")
+        if target_bundle_id:
+            self._current_target_bundle_id = target_bundle_id
+
+        logger.info(f"[ensure_wda_ready] ✅ WDA 环境准备完成（目标 app: {target_bundle_id or 'WDA runner'}）")
         return True
 
     def _is_wda_installed(self) -> bool:
@@ -291,62 +343,126 @@ class iOSClient:
         except Exception as e:
             logger.warning(f"启动端口转发失败: {e}")
 
+    def _get_ios_version(self) -> Optional[float]:
+        """获取设备的 iOS 版本号"""
+        try:
+            ok, out = self._run(["info"], timeout=5)
+            if ok and out:
+                try:
+                    device_info = json.loads(out)
+                    version_str = device_info.get("ProductVersion", "")
+                    if version_str:
+                        parts = version_str.split(".")
+                        if parts:
+                            return float(parts[0])
+                except Exception:
+                    pass
+        except Exception:
+            pass
+        return None
+
     def _start_wda(self) -> bool:
-        """启动 WDA 服务（优先使用 xcodebuild，失败时回退到 wdaproxy）"""
+        """启动 WDA 服务
+        - iOS >= 17.0: 先启动端口转发，检查 WDA 状态；如未运行则用 xcodebuild 启动
+        - iOS < 17.0: 使用 tidevice wdaproxy 启动
+        """
+        # 先检查 WDA 是否已经在运行，避免重复启动导致 app 切换
+        if self._check_wda_status():
+            logger.info("WDA 已在运行，无需重新启动")
+            return True
+
+        # 清理旧进程（如果存在）
         if self._wda_process:
             try:
                 self._wda_process.terminate()
                 self._wda_process.wait(timeout=3)
             except Exception:
                 pass
+            self._wda_process = None
 
-        # 尝试使用 xcodebuild 启动（更可靠）
-        if self._start_wda_with_xcodebuild():
-            return True
-        
-        # 如果 xcodebuild 失败，回退到 wdaproxy
-        logger.warning("xcodebuild 启动失败，尝试使用 wdaproxy")
-        return self._start_wda_with_wdaproxy()
+        # 检测 iOS 版本，选择启动方式
+        ios_version = self._get_ios_version()
+        logger.info(f"[_start_wda] 检测到 iOS 版本: {ios_version}")
+
+        if ios_version and ios_version >= 17.0:
+            # iOS 17+: tidevice 需要 Developer Image，而新 iOS 没有可用的 Developer Image
+            # 方案: 先启动端口转发，然后用 xcodebuild 启动 WDA
+            logger.info(f"[_start_wda] iOS {ios_version} >= 17.0，使用新方案启动 WDA")
+
+            # 步骤1: 启动端口转发
+            self._start_relay()
+            time.sleep(1)
+
+            # 步骤2: 检查是否已经有 WDA 在运行（用户可能在 Xcode 中启动了）
+            if self._check_wda_status():
+                logger.info("[_start_wda] ✅ 检测到 WDA 已在设备上运行")
+                return True
+
+            # 步骤3: 用 xcodebuild 启动 WDA（因为 tidevice 在 iOS 17+ 无法工作）
+            logger.info("[_start_wda] 使用 xcodebuild 启动 WDA...")
+            return self._start_wda_with_xcodebuild()
+        else:
+            # iOS < 17: 使用传统的 tidevice wdaproxy 方式
+            logger.info(f"[_start_wda] iOS {ios_version or '<unknown>'} < 17.0，使用 tidevice wdaproxy")
+            return self._start_wda_with_wdaproxy()
 
     def _start_wda_with_xcodebuild(self) -> bool:
-        """使用 xcodebuild test-without-building 启动 WDA"""
+        """使用 xcodebuild 启动 WDA（iOS 17+ 专用）"""
         try:
+            # 先启动端口转发（xcodebuild 启动 WDA 后，WDA 监听设备的 8100 端口）
+            # 需要先建立转发，否则无法访问 WDA
+            self._start_relay()
+            time.sleep(1)
+
+            # 获取 WDA 项目目录路径
+            wda_dir = os.path.dirname(config.WDA_PROJECT_PATH)
+
             # 构建 xcodebuild 命令
             cmd = [
                 "xcodebuild",
-                "test-without-building",
+                "test",
                 "-project", config.WDA_PROJECT_PATH,
                 "-scheme", "WebDriverAgentRunner",
                 "-destination", f'id={self.udid}',
-                "-derivedDataPath", "/tmp/wda_build"
+                "-derivedDataPath", "/tmp/wda_build",
+                "-allowProvisioningUpdates"
             ]
-            
-            logger.info(f"使用 xcodebuild 启动 WDA: {' '.join(cmd)}")
 
-            # 启动进程（非阻塞模式）
+            logger.info(f"[xcodebuild] WDA 目录: {wda_dir}")
+            logger.info(f"[xcodebuild] 启动命令: {' '.join(cmd)}")
+
+            # 启动进程（非阻塞模式，在指定目录执行）
+            # 注意：xcodebuild 进程必须保持运行，否则 WDA 会被杀死
             self._wda_process = subprocess.Popen(
                 cmd,
-                stdout=subprocess.PIPE,
+                cwd=wda_dir,
+                stdout=subprocess.DEVNULL,
                 stderr=subprocess.PIPE,
                 text=True
             )
 
-            # 等待 WDA 启动（最多等待 60 秒）
-            for i in range(30):
+            # 等待 WDA 启动（xcodebuild 构建 + 启动可能需要 60-120 秒）
+            logger.info("[xcodebuild] 等待 WDA 启动（构建 + 启动可能需要 60-120 秒）...")
+            for i in range(60):
                 if self._check_wda_status():
-                    logger.info("✅ WDA 通过 xcodebuild 启动成功")
+                    logger.info("[xcodebuild] ✅ WDA 启动成功")
                     return True
+                if self._wda_process.poll() is not None:
+                    # xcodebuild 异常退出
+                    try:
+                        _, stderr = self._wda_process.communicate(timeout=5)
+                        logger.error(f"[xcodebuild] ❌ 进程异常退出: {stderr[-3000:] if stderr else '无输出'}")
+                    except Exception:
+                        logger.error("[xcodebuild] ❌ 进程异常退出")
+                    return False
+                if i % 10 == 0:
+                    logger.info(f"[xcodebuild] 等待中... ({i*2}s)")
                 time.sleep(2)
-            
-            # 检查进程是否有错误输出
-            if self._wda_process.poll() is not None:
-                stdout, stderr = self._wda_process.communicate(timeout=5)
-                if stderr:
-                    logger.warning(f"xcodebuild 输出: {stderr[-2000:] if len(stderr) > 2000 else stderr}")
-            
+
+            logger.error("[xcodebuild] ❌ 超时：WDA 未能在 120 秒内启动")
             return False
         except Exception as e:
-            logger.debug(f"xcodebuild 启动失败: {e}")
+            logger.error(f"[xcodebuild] 启动失败: {e}")
             return False
 
     def _start_wda_with_wdaproxy(self) -> bool:
@@ -405,47 +521,61 @@ class iOSClient:
         except Exception:
             return False
 
-    def _create_wda_session(self) -> bool:
-        """创建 WDA Session"""
-        # 首先尝试获取已存在的 session（WDA 可能已经有 session 了）
-        if self._get_existing_session():
+    def _create_wda_session(self, target_bundle_id: str = None) -> bool:
+        """创建 WDA Session
+
+        使用 WDA 支持的 desiredCapabilities 格式，绑定 session 到目标 app。
+        """
+        logger.info(f"[_create_wda_session] 创建 session（目标 app: {target_bundle_id or '未指定'}）")
+
+        # 如果没有指定目标 app，才尝试使用现有 session；否则总是创建新 session 绑定到目标 app
+        if not target_bundle_id and self._get_existing_session():
             return True
-        
-        # 如果没有已存在的 session，尝试创建新的
-        for i in range(3):
-            try:
-                req_body = json.dumps({
-                    "capabilities": {
-                        "platformName": "iOS",
-                        "automationName": "XCUITest",
-                        "udid": self.udid,
-                        "noReset": True
-                    }
-                }).encode()
-                req = urllib.request.Request(
-                    f"{self._wda_url}/session",
-                    data=req_body,
-                    headers={"Content-Type": "application/json"}
-                )
-                with urllib.request.urlopen(req, timeout=10) as resp:
-                    data = json.loads(resp.read().decode())
-                    session_id = data.get("sessionId")
-                    if session_id:
-                        self._wda_session_id = session_id
-                        self._wda_ready = True
-                        logger.info(f"WDA Session 已创建: {session_id[:8]}...")
-                        return True
-            except urllib.error.HTTPError as e:
-                if e.code == 400:
-                    # Session 可能已存在，再次尝试获取
-                    if self._get_existing_session():
-                        return True
-            except Exception as e:
-                logger.debug(f"创建 Session 失败 ({i+1}/3): {e}")
+
+        caps = {"platformName": "iOS", "automationName": "XCUITest", "udid": self.udid, "noReset": True}
+        if target_bundle_id:
+            caps["bundleId"] = target_bundle_id
+
+        payloads = [
+            {"desiredCapabilities": caps},
+            {"capabilities": {"alwaysMatch": caps, "firstMatch": [{}]}},
+            {"capabilities": caps},
+        ]
+
+        for attempt in range(3):
+            for idx, payload in enumerate(payloads):
+                try:
+                    req_body = json.dumps(payload).encode()
+                    req = urllib.request.Request(
+                        f"{self._wda_url}/session",
+                        data=req_body,
+                        headers={"Content-Type": "application/json"}
+                    )
+                    with urllib.request.urlopen(req, timeout=15) as resp:
+                        data = json.loads(resp.read().decode())
+                        session_id = data.get("sessionId")
+                        if session_id:
+                            self._wda_session_id = session_id
+                            self._wda_ready = True
+                            logger.info(f"[_create_wda_session] ✅ Session 已创建 (格式{idx+1}): {session_id[:8]}...")
+                            # session 已绑定到 target_bundle_id，后续操作在该 app 上下文中执行
+                            if target_bundle_id:
+                                self._session_bound_to_bundle_id = target_bundle_id
+                                logger.info(f"[_create_wda_session] ✅ Session 已绑定到 app: {target_bundle_id}")
+                                time.sleep(2)
+                            return True
+                except urllib.error.HTTPError as e:
+                    logger.info(f"[_create_wda_session] 格式{idx+1} HTTP {e.code}")
+                except Exception as e:
+                    logger.info(f"[_create_wda_session] 格式{idx+1} 失败: {e}")
             time.sleep(2)
-        
-        # 最后再尝试一次获取已存在的 session
-        return self._get_existing_session()
+
+        logger.warning(f"[_create_wda_session] ❌ session 创建失败")
+        # 创建失败时，作为兜底尝试使用现有 session
+        existing_ok = self._get_existing_session()
+        if existing_ok and target_bundle_id:
+            self._session_bound_to_bundle_id = target_bundle_id
+        return existing_ok
 
     def _get_existing_session(self) -> bool:
         """获取已存在的 Session"""
@@ -566,6 +696,9 @@ class iOSClient:
         if not self.ensure_wda_ready():
             raise RuntimeError("WDA 未就绪，无法执行点击操作")
 
+        # iOS: 操作前确保目标 app 在前台
+        self._ensure_target_app_foreground()
+
         actions = {
             "actions": [
                 {
@@ -589,6 +722,9 @@ class iOSClient:
         """滑动"""
         if not self.ensure_wda_ready():
             raise RuntimeError("WDA 未就绪，无法执行滑动操作")
+
+        # iOS: 操作前确保目标 app 在前台
+        self._ensure_target_app_foreground()
 
         duration = duration_ms / 1000.0
         steps = max(2, int(duration_ms / 50))
@@ -626,6 +762,9 @@ class iOSClient:
         """长按"""
         if not self.ensure_wda_ready():
             raise RuntimeError("WDA 未就绪，无法执行长按操作")
+
+        # iOS: 操作前确保目标 app 在前台
+        self._ensure_target_app_foreground()
 
         duration = duration_ms / 1000.0
         actions = {
@@ -716,6 +855,12 @@ class iOSClient:
         app_name = self._bundle_id_to_app_name(bundle_id)
         logger.info(f"启动应用: {app_name} ({bundle_id})")
 
+        # 步骤0：优先检查应用是否已经在前台运行（最重要！）
+        current_app = self.get_current_activity()
+        if current_app and current_app == bundle_id:
+            logger.info(f"✅ 应用 {app_name} 已经在前台运行，无需启动")
+            return True, f"应用 {app_name} 已在前台"
+
         # 步骤1：检查 WDA 是否已经在运行（用户手动通过 Xcode 启动）
         if self._check_wda_status():
             logger.info("WDA 已在设备上运行，尝试使用 WDA 启动应用")
@@ -805,23 +950,115 @@ class iOSClient:
         else:
             self._run(["kill", bundle_id], timeout=10)
 
+    def _ensure_target_app_foreground(self):
+        """确保目标 app 在前台（iOS 专用）
+
+        核心逻辑：session 创建时已绑定到目标 bundleId，操作会自动在该 app 上下文中执行。
+        仅在明确检测到 app 不在前台时（且 session 未绑定），才调用 activate_app 恢复。
+        """
+        if not self._current_target_bundle_id:
+            return
+
+        # 如果 session 已经绑定到目标 bundleId，信任 session 绑定，跳过检查（避免不必要的 activate_app 导致 app 切换）
+        if self._session_bound_to_bundle_id == self._current_target_bundle_id:
+            return
+
+        # session 未绑定到目标 app，才检查并激活
+        try:
+            current = self.get_current_activity()
+            if not current or current != self._current_target_bundle_id:
+                logger.info(f"[ensure_fg] 前台 app: {current or '未知'}，恢复目标: {self._current_target_bundle_id}")
+                self.activate_app(self._current_target_bundle_id)
+                time.sleep(1)
+        except Exception as e:
+            logger.debug(f"[ensure_fg] 检查/恢复失败: {e}")
+
+    def activate_app(self, bundle_id: str) -> bool:
+        """将已运行的应用切换到前台（使用 WDA 的 apps/activate 端点）
+
+        正确端点: POST /session/{id}/wda/apps/activate  -> 激活已安装的 app 到前台
+        备用端点:   POST /session/{id}/wda/apps/launch    -> 启动并激活 app
+        """
+        app_name = self._bundle_id_to_app_name(bundle_id)
+        logger.info(f"[activate_app] 激活应用到前台: {app_name} ({bundle_id})")
+
+        if not self._wda_session_id:
+            logger.warning("[activate_app] WDA session 未创建，无法激活 app")
+            return False
+
+        # 正确的端点路径（经过测试，返回 200）
+        endpoints = [
+            f"{self._wda_url}/session/{self._wda_session_id}/wda/apps/activate",
+            f"{self._wda_url}/session/{self._wda_session_id}/wda/apps/launch",
+        ]
+
+        for attempt in range(3):
+            for endpoint in endpoints:
+                try:
+                    req_body = json.dumps({"bundleId": bundle_id}).encode()
+                    req = urllib.request.Request(
+                        endpoint,
+                        data=req_body,
+                        headers={"Content-Type": "application/json"}
+                    )
+                    with urllib.request.urlopen(req, timeout=15) as resp:
+                        logger.info(f"[activate_app] 尝试 {attempt+1}/3 激活成功 ({endpoint.split('/')[-2:]})")
+                        time.sleep(2)
+
+                        # 验证是否真的激活成功
+                        try:
+                            current = self.get_current_activity()
+                            logger.info(f"[activate_app] 激活后前台 app: {current}")
+                            if current == bundle_id:
+                                logger.info(f"[activate_app] ✅ 验证通过，目标 app 已在前台")
+                                return True
+                            else:
+                                logger.warning(f"[activate_app] ⚠️  激活后前台 app 仍不是目标，期望: {bundle_id}")
+                        except Exception as e:
+                            logger.debug(f"[activate_app] 验证前台 app 失败: {e}")
+                except urllib.error.HTTPError as e:
+                    logger.debug(f"[activate_app] HTTP {e.code} (尝试 {attempt+1}): {e}")
+                except Exception as e:
+                    logger.debug(f"[activate_app] 端点失败 (尝试 {attempt+1}): {e}")
+
+            time.sleep(1)
+
+        logger.warning(f"[activate_app] ❌ 3 次激活应用 {app_name} 全部失败")
+        return False
+
     def get_current_activity(self) -> str:
-        """获取当前前台应用"""
+        """获取当前前台应用
+
+        优先级：
+        1. 从 session 获取 activeAppInfo
+        2. 直接访问 WDA API
+        3. 回退到 session 绑定信息（iOS 18.5 上 activeAppInfo 可能不可靠）
+        """
         # 首先尝试使用已有的 session
         if self._wda_ready:
             ok, result = self._wda_request("GET", "/wda/activeAppInfo")
-            if ok and result.get("value"):
-                return result["value"].get("bundleId", "")
-        
+            if ok and result and result.get("value"):
+                bundle_id = result["value"].get("bundleId", "")
+                if bundle_id:
+                    return bundle_id
+
         # 如果没有 session 或失败，直接访问 WDA API（无需 session）
         try:
             req = urllib.request.Request(f"{self._wda_url}/wda/activeAppInfo")
             with urllib.request.urlopen(req, timeout=5) as resp:
                 data = json.loads(resp.read().decode())
-                return data.get("value", {}).get("bundleId", "")
+                bundle_id = data.get("value", {}).get("bundleId", "")
+                if bundle_id:
+                    return bundle_id
         except Exception:
             pass
-        
+
+        # 回退到 session 绑定信息（iOS 18.5 上 activeAppInfo 可能返回空
+        if self._session_bound_to_bundle_id:
+            logger.debug(f"[get_current_activity] activeAppInfo 不可用，回退到 session 绑定: {self._session_bound_to_bundle_id}")
+            return self._session_bound_to_bundle_id
+        if self._current_target_bundle_id:
+            return self._current_target_bundle_id
         return ""
 
     def is_app_foreground(self, bundle_id: str) -> bool:

@@ -194,7 +194,17 @@ async def device_action(serial: str, action: dict):
             if device.os_type == "Android":
                 client.start_app(params.get("package", ""))
             else:
-                client.start_app(params.get("bundle_id", params.get("package", "")))
+                # iOS: 不启动/激活应用，仅检测
+                bundle_id = params.get("bundle_id", params.get("package", ""))
+                current_app = ""
+                try:
+                    current_app = client.get_current_activity()
+                except Exception:
+                    pass
+                if current_app == bundle_id:
+                    logger.info(f"应用 {bundle_id} 已在前台")
+                else:
+                    logger.info(f"应用 {bundle_id} 不在前台，请手动打开")
         elif action_type == "stop_app":
             if device.os_type == "Android":
                 client.stop_app(params.get("package", ""))

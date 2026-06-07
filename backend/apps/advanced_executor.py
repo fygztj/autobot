@@ -4,7 +4,6 @@
 """
 import time
 import random
-from typing import Optional
 from loguru import logger
 
 from backend.apps.advanced_config import AdvancedTaskConfig
@@ -33,6 +32,8 @@ class AdvancedTaskExecutor:
         self.finder = ElementFinder(self.client)
         self.counter = ActionCounter()
         self.is_running = True
+        self._cancel_check = None  # 外部取消检查函数
+        self._app_started = False  # 应用是否已启动
 
         # 应用执行器
         self.app_executor = None
@@ -44,21 +45,40 @@ class AdvancedTaskExecutor:
             from backend.apps.wechat import WechatApp
             self.app_executor = WechatApp(device.client)
 
+    def set_cancel_check(self, check_fn):
+        """设置外部取消检查函数，返回 True 表示已取消"""
+        self._cancel_check = check_fn
+
+    def _is_cancelled(self) -> bool:
+        """检查是否已被外部取消"""
+        if self._cancel_check and self._cancel_check():
+            return True
+        return not self.is_running
+
     def execute(self):
         """执行高级任务"""
         logger.info(f"=" * 40)
         logger.info(f"开始执行高级任务: {self.config.app}")
         self.counter.reset()
 
+        # 检查是否已被取消
+        if self._is_cancelled():
+            logger.info("任务已被取消，跳过执行")
+            return
+
         # 检查设备是否可以控制
         if self.device.os_type == "iOS":
             if hasattr(self.client, 'ensure_wda_ready'):
-                # 先尝试准备 WDA
-                if self.client.ensure_wda_ready():
+                target_bundle = config.APP_PACKAGES.get(self.config.app)
+                logger.info(f"[execute] 准备 WDA，目标 app: {self.config.app} ({target_bundle})")
+                # 传入目标 bundleId，让 WDA session 绑定到目标 app
+                # session 创建时 WDA 会自动激活/启动目标 app，后续 tap/swipe 操作在该 app 上下文中执行
+                if self.client.ensure_wda_ready(target_bundle):
                     self._wda_ready = True
-                    logger.info("✅ WDA 环境准备完成")
+                    logger.info("[execute] ✅ WDA 环境准备完成，session 已绑定到目标 app")
+                    self._app_started = True
                 else:
-                    logger.warning("⚠️  WDA 未就绪，将尝试基本操作（启动应用）")
+                    logger.warning("[execute] ⚠️  WDA 未就绪，无法执行 UI 操作")
                     logger.warning("提示：要执行点击、滑动等 UI 操作，请先安装 WebDriverAgent")
                     self._wda_ready = False
             else:
@@ -68,27 +88,12 @@ class AdvancedTaskExecutor:
 
         try:
             self._start_app()
-            
-            # 如果 WDA 未就绪，尝试启动应用
+
+            # 如果 WDA 未就绪，无法执行 UI 操作
             if not self._wda_ready:
-                # 检查应用是否启动成功
-                if hasattr(self, '_app_started') and self._app_started:
-                    logger.info("WDA 未就绪，已成功启动应用，任务完成（无 UI 操作）")
-                else:
-                    logger.error("WDA 未就绪且应用启动失败，请检查设备配置")
-                    raise RuntimeError("应用启动失败，请检查设备配置")
-                return
-            
-            # 检查应用是否启动成功（即使 WDA 就绪，应用也可能未启动）
-            if hasattr(self, '_app_started') and not self._app_started:
-                logger.warning("⚠️  应用自动启动失败，请确保应用已在设备上手动打开")
-                logger.warning("   正在检查当前前台应用...")
-                current_app = self.client.get_current_activity()
-                logger.info(f"当前前台应用: {current_app}")
-                if current_app != config.APP_PACKAGES.get(self.config.app):
-                    logger.warning("提示：请在设备上手动打开目标应用，然后重新执行任务")
-                    raise RuntimeError("应用未启动，请手动打开应用后重新执行任务")
-            
+                logger.error("WDA 未就绪，无法执行 UI 操作")
+                raise RuntimeError("WDA 未就绪，请检查设备配置")
+
             if self.config.topics:
                 self._search_topic()
             self._view_and_interact_loop()
@@ -97,7 +102,7 @@ class AdvancedTaskExecutor:
             raise
 
     def _start_app(self):
-        """启动应用（优先检查是否已在前台）"""
+        """启动应用（iOS 跳过启动，仅检测是否在前台）"""
         from backend.config import config
 
         logger.info(f"启动应用: {self.config.app}")
@@ -110,47 +115,56 @@ class AdvancedTaskExecutor:
             self._app_started = False
             return
 
-        # 先检查应用是否已经在前台运行
-        try:
-            current_app = self.client.get_current_activity()
-            if current_app == package:
-                logger.info(f"✅ 应用已在前台运行: {self.config.app}")
-                self._app_started = True
-                return
-        except Exception as e:
-            logger.debug(f"检查前台应用失败: {e}")
-
-        # 应用不在前台，尝试启动
         os_type = self.device.os_type
-        result = False
-        
-        if os_type == "Android":
-            result = self.client.start_app(package)
-        else:
-            result = self.client.start_app(package)
-        
-        # 检查返回值（iOS客户端返回tuple，Android可能返回bool或None）
+
+        if os_type == "iOS":
+            # iOS: session 创建时已绑定到目标 bundleId，WDA 会自动激活目标 app
+            # 后续 tap/swipe 操作在该 app 上下文中执行，不需要手动 activate_app
+            try:
+                current_app = self.client.get_current_activity()
+                logger.info(f"[_start_app] 当前前台应用: {current_app}（session 已绑定到: {package}）")
+                self._app_started = True
+            except Exception as e:
+                logger.debug(f"[_start_app] 检查前台应用失败: {e}")
+                self._app_started = True  # 信任 session 绑定，继续执行
+            return
+
+        # Android: 正常启动应用
+        check_count = 3
+        for i in range(check_count):
+            try:
+                current_app = self.client.get_current_activity()
+                logger.info(f"检查前台应用 [{i+1}/{check_count}]: {current_app}")
+                if current_app == package:
+                    logger.info(f"✅ 应用已在前台运行: {self.config.app}")
+                    self._app_started = True
+                    return
+            except Exception as e:
+                logger.debug(f"检查前台应用失败: {e}")
+            if i < check_count - 1:
+                time.sleep(1)
+
+        result = self.client.start_app(package)
         if isinstance(result, tuple):
             self._app_started = result[0]
         else:
             self._app_started = result is not False
         
         if self._app_started:
-            logger.info(f"✅ 应用启动成功: {self.config.app}")
-        else:
-            # 启动失败，再次检查前台应用（用户可能手动打开了）
+            time_controller.random_sleep(2, 3, "等待应用切换")
             try:
                 current_app = self.client.get_current_activity()
-                if current_app == package:
-                    logger.info(f"⚠️  应用启动API失败，但应用已在前台（用户手动打开）")
-                    self._app_started = True
+                if current_app != package:
+                    logger.warning(f"⚠️  应用启动API返回成功，但实际不在前台")
+                    self._app_started = False
                 else:
-                    logger.error(f"❌ 应用启动失败: {self.config.app}")
+                    logger.info(f"✅ 应用启动成功: {self.config.app}")
             except Exception as e:
-                logger.debug(f"再次检查前台应用失败: {e}")
-                logger.error(f"❌ 应用启动失败: {self.config.app}")
+                logger.debug(f"验证前台应用失败: {e}")
+        else:
+            logger.error(f"❌ 应用启动失败: {self.config.app}")
 
-        time_controller.random_sleep(3, 5, "等待应用启动")
+        time_controller.random_sleep(2, 3, "等待应用启动")
 
     def _search_topic(self):
         """搜索主题词"""
@@ -237,18 +251,33 @@ class AdvancedTaskExecutor:
 
     def _view_and_interact_loop(self):
         """浏览和互动循环"""
+        from backend.config import config as _cfg
+
         start_time = time.time()
         force_work_seconds = self.config.force_work_min * 60
         force_sleep_seconds = self.config.force_sleep_min * 60
         topic_switch_interval = random_selector.pick_from_list([8, 10, 12, 15], count=1)[0]
 
+        target_package = _cfg.APP_PACKAGES.get(self.config.app)
+
         logger.info(f"开始浏览循环 (最大浏览: {self.config.max_view_count or '无限制'}, 工作: {self.config.force_work_min}分钟)")
 
         while self.is_running:
+            # 检查是否已被外部取消
+            if self._is_cancelled():
+                logger.info("任务已被取消，停止浏览循环")
+                break
+
             # 检查最大浏览数
             if self.config.max_view_count > 0 and self.counter.view_count >= self.config.max_view_count:
                 logger.info(f"达到最大浏览数 {self.config.max_view_count}，停止任务")
                 break
+
+            # iOS: 仅在开头设置目标 bundleId（session 创建时已绑定到目标 app，
+            # 后续 tap/swipe 操作会在该 app 上下文中执行，无需每轮检查
+            if self.device.os_type == "iOS" and target_package:
+                if hasattr(self.client, '_current_target_bundle_id'):
+                    self.client._current_target_bundle_id = target_package
 
             # 检查强制工作/休眠
             elapsed = time.time() - start_time

@@ -244,13 +244,8 @@ class DeviceManager:
                     try:
                         device = Device(dev_id, dev_os)
                         device.refresh_info()
-                        # 如果是 iOS 设备，尝试准备 WDA 环境
-                        if dev_os == "iOS":
-                            try:
-                                device.client.ensure_wda_ready()
-                                logger.info(f"WDA 环境已准备就绪: {dev_id}")
-                            except Exception as e:
-                                logger.warning(f"准备 WDA 环境失败（稍后会重试）: {e}")
+                        # iOS 设备不再自动准备 WDA，避免启动 WDA 时切换用户当前使用的 app
+                        # WDA 将在任务执行时按需准备
                         self._devices[dev_id] = device
                         if self._on_device_connected:
                             self._on_device_connected(dev_id)
