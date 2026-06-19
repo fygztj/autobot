@@ -8,73 +8,73 @@
         * { box-sizing: border-box; margin: 0; padding: 0; }
         body { font-family: -apple-system, BlinkMacSystemFont, "PingFang SC", sans-serif; background: #f5f5f7; color: #1d1d1f; padding: 20px; }
         .container { max-width: 1200px; margin: 0 auto; }
-        h1 { font-size: 28px; margin-bottom: 20px; font-weight: 600; }
-        h2 { font-size: 18px; margin-bottom: 12px; font-weight: 600; }
+        h1 { font-size: 24px; margin-bottom: 16px; font-weight: 600; }
+        h2 { font-size: 16px; margin-bottom: 10px; font-weight: 600; }
 
-        .panel { background: white; border-radius: 12px; padding: 20px; margin-bottom: 16px; box-shadow: 0 2px 8px rgba(0,0,0,0.04); }
-        .panel-header { display: flex; justify-content: space-between; align-items: center; margin-bottom: 16px; }
-        .status-badge { display: inline-block; padding: 4px 12px; border-radius: 12px; font-size: 13px; background: #e8f5e9; color: #2e7d32; }
+        .panel { background: white; border-radius: 12px; padding: 16px; margin-bottom: 12px; box-shadow: 0 2px 8px rgba(0,0,0,0.04); }
+        .panel-header { display: flex; justify-content: space-between; align-items: center; margin-bottom: 12px; }
+        .status-badge { display: inline-block; padding: 4px 12px; border-radius: 12px; font-size: 12px; background: #e8f5e9; color: #2e7d32; }
         .status-badge.warning { background: #fff3e0; color: #e65100; }
+        .status-badge.gray { background: #e0e0e0; color: #555; }
 
-        .device-list { display: grid; grid-template-columns: repeat(auto-fill, minmax(280px, 1fr)); gap: 12px; }
-        .device-card { border: 2px solid #e0e0e0; border-radius: 10px; padding: 14px; cursor: pointer; transition: all 0.15s; }
+        .device-list { display: grid; grid-template-columns: repeat(auto-fill, minmax(240px, 1fr)); gap: 10px; }
+        .device-card { border: 2px solid #e0e0e0; border-radius: 8px; padding: 12px; cursor: pointer; transition: all 0.15s; }
         .device-card:hover { border-color: #2196f3; background: #f8fbff; }
         .device-card.selected { border-color: #2196f3; background: #e3f2fd; }
-        .device-name { font-weight: 600; font-size: 15px; margin-bottom: 6px; }
-        .device-info { font-size: 12px; color: #666; line-height: 1.6; }
-        .device-status { display: inline-block; padding: 2px 8px; border-radius: 8px; font-size: 11px; margin-top: 6px; background: #e8f5e9; color: #2e7d32; }
+        .device-name { font-weight: 600; font-size: 14px; margin-bottom: 4px; }
+        .device-info { font-size: 11px; color: #666; line-height: 1.5; }
+        .device-status { display: inline-block; padding: 2px 6px; border-radius: 6px; font-size: 10px; margin-top: 4px; background: #e8f5e9; color: #2e7d32; }
 
-        .form-group { margin-bottom: 14px; }
-        label { display: block; font-size: 13px; color: #555; margin-bottom: 6px; font-weight: 500; }
-        select, input, textarea { width: 100%; padding: 8px 12px; border: 1px solid #d0d0d0; border-radius: 6px; font-size: 14px; font-family: inherit; }
-        textarea { resize: vertical; min-height: 60px; }
+        .form-group { margin-bottom: 10px; }
+        label { display: block; font-size: 12px; color: #555; margin-bottom: 4px; font-weight: 500; }
+        select, input, textarea { width: 100%; padding: 8px 10px; border: 1px solid #d0d0d0; border-radius: 6px; font-size: 13px; font-family: inherit; }
+        textarea { resize: vertical; min-height: 50px; }
         select:focus, input:focus, textarea:focus { outline: none; border-color: #2196f3; }
 
-        .btn-row { display: flex; gap: 10px; flex-wrap: wrap; margin-top: 10px; }
-        .btn { padding: 10px 18px; border: none; border-radius: 8px; font-size: 14px; font-weight: 500; cursor: pointer; transition: all 0.15s; font-family: inherit; }
+        .btn-row { display: flex; gap: 8px; flex-wrap: wrap; margin-top: 10px; }
+        .btn { padding: 8px 14px; border: none; border-radius: 8px; font-size: 13px; font-weight: 500; cursor: pointer; transition: all 0.15s; font-family: inherit; }
         .btn-primary { background: #2196f3; color: white; }
         .btn-primary:hover { background: #1976d2; }
         .btn-default { background: #eef0f3; color: #1d1d1f; }
         .btn-default:hover { background: #e0e2e7; }
-        .btn:disabled { opacity: 0.5; cursor: not-allowed; }
+        .btn:disabled { opacity: 0.4; cursor: not-allowed; }
 
-        .checklist { display: grid; grid-template-columns: repeat(auto-fill, minmax(140px, 1fr)); gap: 8px; }
-        .checklist label { display: flex; align-items: center; cursor: pointer; font-weight: normal; margin: 0; }
+        .checklist { display: flex; gap: 12px; flex-wrap: wrap; }
+        .checklist label { display: flex; align-items: center; cursor: pointer; font-weight: normal; font-size: 13px; margin: 0; }
         .checklist input[type="checkbox"] { width: auto; margin-right: 6px; }
 
-        #logPanel { background: #1e1e1e; color: #d4d4d4; border-radius: 8px; padding: 14px; font-family: "SF Mono", Consolas, monospace; font-size: 12px; max-height: 300px; overflow-y: auto; }
-        .log-entry { line-height: 1.6; padding: 2px 0; }
+        #logPanel { background: #1e1e1e; color: #d4d4d4; border-radius: 8px; padding: 12px; font-family: "SF Mono", Consolas, monospace; font-size: 12px; max-height: 260px; overflow-y: auto; white-space: pre-wrap; }
+        .log-entry { padding: 1px 0; }
         .log-entry.info { color: #7fc1ff; }
         .log-entry.success { color: #90ee90; }
         .log-entry.error { color: #f48771; }
         .log-entry.action { color: #ffd700; }
 
-        .empty-state { text-align: center; padding: 40px 20px; color: #888; font-size: 14px; }
-        .divider { height: 1px; background: #eee; margin: 16px 0; }
-
-        .hidden { display: none !important; }
-
-        .input-row { display: flex; gap: 12px; }
+        .empty-state { text-align: center; padding: 30px 10px; color: #888; font-size: 13px; }
+        .input-row { display: flex; gap: 10px; }
         .input-row > div { flex: 1; }
+
+        .hint { font-size: 12px; color: #888; margin-bottom: 8px; }
     </style>
 </head>
 <body>
 <div class="container">
     <h1>📱 AutoBot - iOS 自动化助手</h1>
 
-    <!-- App 设备管理 -->
+    <!-- 设备列表 -->
     <div class="panel">
         <div class="panel-header">
-            <h2>已连接设备</h2>
+            <h2>已连接设备 <small style="font-weight: normal; color: #888; font-size: 12px;">点击设备卡片选中它</small></h2>
             <span class="status-badge" id="deviceCount">0 台在线</span>
         </div>
         <div id="deviceList"></div>
     </div>
 
-    <!-- 任务配置区（选中设备后显示） -->
-    <div id="taskSection" class="panel hidden">
+    <!-- 任务配置区 -->
+    <div class="panel">
         <div class="panel-header">
-            <h2>📋 任务配置 - <span id="selectedDeviceName">-</span></h2>
+            <h2>📋 任务配置</h2>
+            <span class="status-badge gray" id="selectedDevice">未选择设备</span>
         </div>
 
         <div class="form-group">
@@ -110,7 +110,6 @@
             <label>评论内容（每行一条，随机使用）</label>
             <textarea id="commentText">太棒了！
 支持一下
-关注了
 学到了
 哈哈哈</textarea>
         </div>
@@ -121,28 +120,129 @@
             <button class="btn btn-default" onclick="sendSingleAction('scroll')">测试: 滚动</button>
             <button class="btn btn-default" onclick="sendSingleAction('like')">测试: 点赞</button>
         </div>
+
+        <div class="hint" id="hint" style="margin-top: 10px;">💡 先在上方点击一个设备卡片，然后开始执行任务</div>
     </div>
 
     <!-- 日志面板 -->
-    <div id="logPanelWrap" class="panel hidden">
+    <div class="panel">
         <div class="panel-header">
             <h2>📜 执行日志</h2>
-            <button class="btn btn-default" style="padding:6px 12px;font-size:12px;" onclick="clearLog()">清空</button>
+            <button class="btn btn-default" style="padding:4px 10px;font-size:11px;" onclick="clearLog()">清空</button>
         </div>
-        <div id="logPanel">等待操作...</div>
+        <div id="logPanel">日志将在这里显示...</div>
     </div>
 </div>
 
 <script>
+    // ============ 全局状态 ============
     var selectedDeviceId = null;
+    var deviceList = [];
     var ws = null;
 
-    // 显示评论框
-    document.getElementById('chkComment').addEventListener('change', function() {
-        document.getElementById('commentBox').style.display = this.checked ? 'block' : 'none';
-    });
+    // ============ 工具函数 ============
+    function addLog(text, type) {
+        var div = document.createElement('div');
+        div.className = 'log-entry ' + (type || '');
+        var time = new Date().toLocaleTimeString();
+        div.textContent = '[' + time + '] ' + text;
+        document.getElementById('logPanel').appendChild(div);
+        document.getElementById('logPanel').scrollTop = document.getElementById('logPanel').scrollHeight;
+    }
 
-    // 连接前端 WebSocket，实时获取设备列表
+    function clearLog() {
+        document.getElementById('logPanel').innerHTML = '';
+    }
+
+    // ============ 设备列表渲染 ============
+    function renderDevices(devices) {
+        deviceList = devices || [];
+        document.getElementById('deviceCount').textContent = (deviceList.length) + ' 台在线';
+
+        if (deviceList.length === 0) {
+            document.getElementById('deviceList').innerHTML =
+                '<div class="empty-state">暂无设备连接。<br><br>请在 iPhone 上安装并打开 AutoBot App，<br>在同一 WiFi 网络下连接此服务器。</div>';
+            updateSelectedDeviceUI();
+            return;
+        }
+
+        var html = '<div class="device-list">';
+        devices.forEach(function(d) {
+            var isSelected = (selectedDeviceId && selectedDeviceId === d.device_id) ? 'selected' : '';
+            html += '<div class="device-card ' + isSelected + '" data-device-id="' + d.device_id + '" data-device-name="' + (d.device_name || 'iPhone') + '">';
+            html += '<div class="device-name">📱 ' + (d.device_name || 'iPhone') + '</div>';
+            html += '<div class="device-info">' + (d.system_version || '') + ' | App v' + (d.app_version || '') + '</div>';
+            html += '<div class="device-info">Model: ' + (d.model || '') + '</div>';
+            html += '<span class="device-status">' + (d.status || 'idle') + '</span>';
+            html += '</div>';
+        });
+        html += '</div>';
+        document.getElementById('deviceList').innerHTML = html;
+
+        // 事件委托绑定点击
+        document.querySelectorAll('.device-card').forEach(function(card) {
+            card.addEventListener('click', function() {
+                selectDevice(card.getAttribute('data-device-id'), card.getAttribute('data-device-name'));
+            });
+        });
+    }
+
+    // ============ 选中设备 ============
+    function selectDevice(deviceId, deviceName) {
+        selectedDeviceId = deviceId;
+        updateSelectedDeviceUI();
+        addLog('已选择设备: ' + deviceName, 'info');
+
+        // 刷新设备列表高亮
+        document.querySelectorAll('.device-card').forEach(function(card) {
+            if (card.getAttribute('data-device-id') === deviceId) {
+                card.classList.add('selected');
+            } else {
+                card.classList.remove('selected');
+            }
+        });
+    }
+
+    function updateSelectedDeviceUI() {
+        if (selectedDeviceId) {
+            var dev = deviceList.find(function(d) { return d.device_id === selectedDeviceId; });
+            var name = dev ? dev.device_name : '设备';
+            document.getElementById('selectedDevice').textContent = name;
+            document.getElementById('selectedDevice').className = 'status-badge';
+            document.getElementById('hint').textContent = '✅ 已选中设备，可以开始执行任务';
+            document.getElementById('startTaskBtn').disabled = false;
+        } else {
+            document.getElementById('selectedDevice').textContent = '未选择设备';
+            document.getElementById('selectedDevice').className = 'status-badge gray';
+            document.getElementById('hint').textContent = '💡 先在上方点击一个设备卡片，然后开始执行任务';
+            document.getElementById('startTaskBtn').disabled = true;
+        }
+    }
+
+    // ============ 刷新设备列表（REST API） ============
+    function loadDevices() {
+        fetch('/api/app-devices')
+            .then(function(r) { return r.json(); })
+            .then(function(data) {
+                renderDevices(data.devices || []);
+                // 如果之前选过设备，检查是否仍然存在
+                if (selectedDeviceId) {
+                    var exists = (data.devices || []).some(function(d) {
+                        return d.device_id === selectedDeviceId;
+                    });
+                    if (!exists) {
+                        selectedDeviceId = null;
+                        updateSelectedDeviceUI();
+                    }
+                }
+            })
+            .catch(function(err) {
+                document.getElementById('deviceList').innerHTML =
+                    '<div class="empty-state">加载失败: ' + err + '</div>';
+            });
+    }
+
+    // ============ WebSocket 实时更新 ============
     function connectFrontendWS() {
         var proto = location.protocol === 'https:' ? 'wss:' : 'ws:';
         ws = new WebSocket(proto + '//' + location.host + '/ws/frontend');
@@ -159,65 +259,16 @@
         };
 
         ws.onclose = function() {
-            setTimeout(connectFrontendWS, 3000);  // 自动重连
+            setTimeout(connectFrontendWS, 3000);
         };
 
-        ws.onerror = function() {
-            // 降级：用轮询
-        };
+        ws.onerror = function() {};
     }
 
-    // 渲染设备列表
-    function renderDevices(devices) {
-        document.getElementById('deviceCount').textContent = devices.length + ' 台在线';
-
-        if (!devices || devices.length === 0) {
-            document.getElementById('deviceList').innerHTML =
-                '<div class="empty-state">暂无设备连接。<br><br>请在 iPhone 上安装并打开 AutoBot App，<br>在同一 WiFi 网络下连接此服务器。</div>';
-            return;
-        }
-
-        var html = '<div class="device-list">';
-        devices.forEach(function(d) {
-            var selected = selectedDeviceId === d.device_id ? 'selected' : '';
-            html += '<div class="device-card ' + selected + '" onclick="selectDevice(\'' + d.device_id + '\',\'' + d.device_name + '\')">';
-            html += '<div class="device-name">📱 ' + (d.device_name || 'iPhone') + '</div>';
-            html += '<div class="device-info">' + (d.system_version || '') + ' | App v' + (d.app_version || '') + '</div>';
-            html += '<div class="device-info">Model: ' + (d.model || '') + '</div>';
-            html += '<span class="device-status">' + (d.status || 'idle') + '</span>';
-            html += '</div>';
-        });
-        html += '</div>';
-        document.getElementById('deviceList').innerHTML = html;
-    }
-
-    // 选择设备
-    function selectDevice(deviceId, deviceName) {
-        selectedDeviceId = deviceId;
-        document.getElementById('selectedDeviceName').textContent = deviceName;
-        document.getElementById('taskSection').classList.remove('hidden');
-        document.getElementById('logPanelWrap').classList.remove('hidden');
-        addLog('已选择设备: ' + deviceName, 'info');
-        loadDevices();  // 刷新高亮
-    }
-
-    // 刷新设备列表
-    function loadDevices() {
-        fetch('/api/app-devices')
-            .then(function(r) { return r.json(); })
-            .then(function(data) {
-                renderDevices(data.devices || []);
-            })
-            .catch(function(err) {
-                document.getElementById('deviceList').innerHTML =
-                    '<div class="empty-state">加载失败: ' + err + '</div>';
-            });
-    }
-
-    // 发送单个操作（测试用）
+    // ============ 发送单个指令 ============
     function sendSingleAction(action) {
         if (!selectedDeviceId) {
-            alert('请先选择一个设备');
+            alert('请先点击上方的设备卡片选择一个设备');
             return;
         }
 
@@ -234,7 +285,7 @@
 
         addLog('发送指令: ' + action, 'action');
 
-        fetch('/api/app-devices/' + selectedDeviceId + '/command', {
+        fetch('/api/app-devices/' + encodeURIComponent(selectedDeviceId) + '/command', {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify({
@@ -246,20 +297,20 @@
         .then(function(r) { return r.json(); })
         .then(function(data) {
             if (data.success) {
-                addLog('✅ 成功 - ' + (data.message || ''), 'success');
+                addLog('✅ 成功 - ' + (data.message || action), 'success');
             } else {
-                addLog('❌ 失败 - ' + (data.message || ''), 'error');
+                addLog('❌ 失败 - ' + (data.message || '未知错误'), 'error');
             }
         })
         .catch(function(err) {
-            addLog('错误: ' + err, 'error');
+            addLog('请求错误: ' + err, 'error');
         });
     }
 
-    // 开始执行复合任务
+    // ============ 开始执行复合任务 ============
     function startTask() {
         if (!selectedDeviceId) {
-            alert('请先选择一个设备');
+            alert('请先点击上方的设备卡片选择一个设备');
             return;
         }
 
@@ -294,9 +345,10 @@
         addLog('开始执行任务 - ' + platform + ', ' + operations.length + ' 个操作', 'action');
 
         document.getElementById('startTaskBtn').disabled = true;
+        var originalText = document.getElementById('startTaskBtn').textContent;
         document.getElementById('startTaskBtn').textContent = '⏳ 执行中...';
 
-        fetch('/api/app-devices/' + selectedDeviceId + '/task', {
+        fetch('/api/app-devices/' + encodeURIComponent(selectedDeviceId) + '/task', {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify({
@@ -308,41 +360,36 @@
         .then(function(r) { return r.json(); })
         .then(function(data) {
             addLog('任务完成: ' + data.success_count + '/' + data.total_operations + ' 成功', 'success');
-            data.results.forEach(function(r) {
-                if (r.success) {
-                    addLog('  ✅ ' + r.action + ' - ' + r.message, 'success');
-                } else {
-                    addLog('  ❌ ' + r.action + ' - ' + r.message, 'error');
-                }
-            });
+            if (data.results && data.results.forEach) {
+                data.results.forEach(function(r) {
+                    if (r.success) {
+                        addLog('  ✅ ' + r.action + ' - ' + r.message, 'success');
+                    } else {
+                        addLog('  ❌ ' + r.action + ' - ' + r.message, 'error');
+                    }
+                });
+            }
         })
         .catch(function(err) {
             addLog('任务执行错误: ' + err, 'error');
         })
         .finally(function() {
             document.getElementById('startTaskBtn').disabled = false;
-            document.getElementById('startTaskBtn').textContent = '▶️ 开始执行';
+            document.getElementById('startTaskBtn').textContent = originalText;
         });
     }
 
-    // 日志
-    function addLog(text, type) {
-        var div = document.createElement('div');
-        div.className = 'log-entry ' + (type || '');
-        var time = new Date().toLocaleTimeString();
-        div.textContent = '[' + time + '] ' + text;
-        document.getElementById('logPanel').appendChild(div);
-        document.getElementById('logPanel').scrollTop = document.getElementById('logPanel').scrollHeight;
-    }
-
-    function clearLog() {
-        document.getElementById('logPanel').innerHTML = '';
-    }
+    // 评论框显示
+    document.getElementById('chkComment').addEventListener('change', function() {
+        document.getElementById('commentBox').style.display = this.checked ? 'block' : 'none';
+    });
 
     // 初始化
+    document.getElementById('startTaskBtn').disabled = true;
+    addLog('页面已加载，等待设备连接...', 'info');
     connectFrontendWS();
     loadDevices();
-    setInterval(loadDevices, 10000);  // 每 10 秒刷新一次（降级方案）
+    setInterval(loadDevices, 15000);  // 每 15 秒轮询一次作为备份
 </script>
 </body>
 </html>
