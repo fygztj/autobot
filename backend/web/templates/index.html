@@ -3,544 +3,346 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>autobot - 移动端自动化机器人</title>
-    <link rel="stylesheet" href="/static/css/style.css">
+    <title>AutoBot - iOS 自动化助手</title>
+    <style>
+        * { box-sizing: border-box; margin: 0; padding: 0; }
+        body { font-family: -apple-system, BlinkMacSystemFont, "PingFang SC", sans-serif; background: #f5f5f7; color: #1d1d1f; padding: 20px; }
+        .container { max-width: 1200px; margin: 0 auto; }
+        h1 { font-size: 28px; margin-bottom: 20px; font-weight: 600; }
+        h2 { font-size: 18px; margin-bottom: 12px; font-weight: 600; }
+
+        .panel { background: white; border-radius: 12px; padding: 20px; margin-bottom: 16px; box-shadow: 0 2px 8px rgba(0,0,0,0.04); }
+        .panel-header { display: flex; justify-content: space-between; align-items: center; margin-bottom: 16px; }
+        .status-badge { display: inline-block; padding: 4px 12px; border-radius: 12px; font-size: 13px; background: #e8f5e9; color: #2e7d32; }
+        .status-badge.warning { background: #fff3e0; color: #e65100; }
+
+        .device-list { display: grid; grid-template-columns: repeat(auto-fill, minmax(280px, 1fr)); gap: 12px; }
+        .device-card { border: 2px solid #e0e0e0; border-radius: 10px; padding: 14px; cursor: pointer; transition: all 0.15s; }
+        .device-card:hover { border-color: #2196f3; background: #f8fbff; }
+        .device-card.selected { border-color: #2196f3; background: #e3f2fd; }
+        .device-name { font-weight: 600; font-size: 15px; margin-bottom: 6px; }
+        .device-info { font-size: 12px; color: #666; line-height: 1.6; }
+        .device-status { display: inline-block; padding: 2px 8px; border-radius: 8px; font-size: 11px; margin-top: 6px; background: #e8f5e9; color: #2e7d32; }
+
+        .form-group { margin-bottom: 14px; }
+        label { display: block; font-size: 13px; color: #555; margin-bottom: 6px; font-weight: 500; }
+        select, input, textarea { width: 100%; padding: 8px 12px; border: 1px solid #d0d0d0; border-radius: 6px; font-size: 14px; font-family: inherit; }
+        textarea { resize: vertical; min-height: 60px; }
+        select:focus, input:focus, textarea:focus { outline: none; border-color: #2196f3; }
+
+        .btn-row { display: flex; gap: 10px; flex-wrap: wrap; margin-top: 10px; }
+        .btn { padding: 10px 18px; border: none; border-radius: 8px; font-size: 14px; font-weight: 500; cursor: pointer; transition: all 0.15s; font-family: inherit; }
+        .btn-primary { background: #2196f3; color: white; }
+        .btn-primary:hover { background: #1976d2; }
+        .btn-default { background: #eef0f3; color: #1d1d1f; }
+        .btn-default:hover { background: #e0e2e7; }
+        .btn:disabled { opacity: 0.5; cursor: not-allowed; }
+
+        .checklist { display: grid; grid-template-columns: repeat(auto-fill, minmax(140px, 1fr)); gap: 8px; }
+        .checklist label { display: flex; align-items: center; cursor: pointer; font-weight: normal; margin: 0; }
+        .checklist input[type="checkbox"] { width: auto; margin-right: 6px; }
+
+        #logPanel { background: #1e1e1e; color: #d4d4d4; border-radius: 8px; padding: 14px; font-family: "SF Mono", Consolas, monospace; font-size: 12px; max-height: 300px; overflow-y: auto; }
+        .log-entry { line-height: 1.6; padding: 2px 0; }
+        .log-entry.info { color: #7fc1ff; }
+        .log-entry.success { color: #90ee90; }
+        .log-entry.error { color: #f48771; }
+        .log-entry.action { color: #ffd700; }
+
+        .empty-state { text-align: center; padding: 40px 20px; color: #888; font-size: 14px; }
+        .divider { height: 1px; background: #eee; margin: 16px 0; }
+
+        .hidden { display: none !important; }
+
+        .input-row { display: flex; gap: 12px; }
+        .input-row > div { flex: 1; }
+    </style>
 </head>
 <body>
-    <!-- 顶部导航 -->
-    <div class="header">
-        <h1>🤖 autobot</h1>
-        <div class="status-bar">
-            <span class="status-badge">设备: <b id="deviceCount">0</b></span>
-            <span class="status-badge">空闲: <b id="idleCount">0</b></span>
-            <span class="status-badge">任务: <b id="taskCount">0</b></span>
-        </div>
-    </div>
+<div class="container">
+    <h1>📱 AutoBot - iOS 自动化助手</h1>
 
-    <div class="container">
-        <div class="panel-grid">
-            <!-- 设备列表 -->
-            <div class="panel">
-                <div class="panel-header">
-                    <h3>已连接设备</h3>
-                    <button class="btn btn-sm btn-default" onclick="refreshDevices()">刷新</button>
-                </div>
-                <div class="panel-body device-list" id="deviceList">
-                    <div class="empty-state">加载中...</div>
-                </div>
-            </div>
-
-            <!-- 任务列表 -->
-            <div class="panel">
-                <div class="panel-header">
-                    <h3>任务列表</h3>
-                    <button class="btn btn-sm btn-default" onclick="refreshTasks()">刷新</button>
-                </div>
-                <div class="panel-body" id="taskList">
-                    <div class="empty-state">加载中...</div>
-                </div>
-            </div>
-
-            <!-- 创建任务 -->
-            <div class="panel panel-full">
-                <div class="panel-header">
-                    <h3>创建新任务</h3>
-                    <div style="display:flex; gap:8px;">
-                        <label style="display:flex; align-items:center; gap:4px; cursor:pointer;">
-                            <input type="radio" name="taskMode" id="normalMode" checked onchange="switchTaskMode()">
-                            <span>普通任务</span>
-                        </label>
-                        <label style="display:flex; align-items:center; gap:4px; cursor:pointer;">
-                            <input type="radio" name="taskMode" id="advancedMode" onchange="switchTaskMode()">
-                            <span>高级任务（浏览+互动）</span>
-                        </label>
-                    </div>
-                </div>
-                <div class="panel-body">
-                    <!-- 基础信息 -->
-                    <div style="display:grid; grid-template-columns:1fr 1fr; gap:16px; margin-bottom:16px;">
-                        <div>
-                            <div class="form-group">
-                                <label>任务名称 *</label>
-                                <input class="form-control" id="taskName" placeholder="例如：每天上午刷抖音10分钟"/>
-                            </div>
-                            <div class="form-group">
-                                <label>描述</label>
-                                <textarea class="form-control" id="taskDesc" placeholder="任务描述（可选）"></textarea>
-                            </div>
-                        </div>
-                        <div>
-                            <div class="form-group">
-                                <label>定时执行</label>
-                                <select class="form-control" id="scheduleType">
-                                    <option value="">手动执行</option>
-                                    <option value="cron">Cron 定时</option>
-                                    <option value="interval">间隔执行</option>
-                                </select>
-                            </div>
-                            <div id="cronConfig" style="display:none">
-                                <div class="form-group">
-                                    <label>Cron 规则</label>
-                                    <div class="schedule-config">
-                                        <span>每天</span>
-                                        <input class="form-control" id="cronHour" placeholder="时" value="9"/>
-                                        <span>:</span>
-                                        <input class="form-control" id="cronMinute" placeholder="分" value="0"/>
-                                    </div>
-                                </div>
-                            </div>
-                            <div id="intervalConfig" style="display:none">
-                                <div class="form-group">
-                                    <label>间隔执行</label>
-                                    <div class="schedule-config">
-                                        <span>每</span>
-                                        <input class="form-control" id="intervalMinutes" value="30"/>
-                                        <span>分钟执行一次</span>
-                                    </div>
-                                </div>
-                            </div>
-                        </div>
-                    </div>
-
-                    <!-- 普通任务模式 -->
-                    <div id="normalTaskSection">
-                        <div class="form-group">
-                            <label>目标应用</label>
-                            <select class="form-control" id="taskApp">
-                                <option value="">通用操作</option>
-                                <option value="wechat">微信</option>
-                                <option value="douyin">抖音</option>
-                                <option value="xiaohongshu">小红书</option>
-                            </select>
-                        </div>
-                        <div class="form-group">
-                            <label>操作步骤</label>
-                            <div id="actionList"></div>
-                            <button class="btn btn-sm btn-default" onclick="addAction()" style="margin-top:8px">+ 添加步骤</button>
-                        </div>
-                    </div>
-
-                    <!-- 高级任务模式 -->
-                    <div id="advancedTaskSection" style="display:none;">
-                        <div class="form-group">
-                            <label>目标应用 *</label>
-                            <select class="form-control" id="advApp">
-                                <option value="xiaohongshu">小红书</option>
-                                <option value="douyin">抖音</option>
-                                <option value="wechat">微信</option>
-                            </select>
-                        </div>
-
-                        <!-- 主题词配置 -->
-                        <div class="form-group">
-                            <label>主题词（一行一个）</label>
-                            <textarea class="form-control" id="advTopics" placeholder="浙江&#10;体育&#10;旅游&#10;美食"></textarea>
-                        </div>
-
-                        <!-- 动作配置 -->
-                        <div style="display:grid; grid-template-columns:1fr 1fr 1fr; gap:12px; margin-bottom:12px;">
-                            <div>
-                                <label style="display:flex; align-items:center; gap:8px;">
-                                    <input type="checkbox" id="advLikeEnabled">
-                                    <span>点赞</span>
-                                </label>
-                                <div class="form-group">
-                                    <label>比例（0-1）</label>
-                                    <input type="number" class="form-control" id="advLikeRate" step="0.01" value="0.1" min="0" max="1">
-                                </div>
-                            </div>
-                            <div>
-                                <label style="display:flex; align-items:center; gap:8px;">
-                                    <input type="checkbox" id="advCommentEnabled">
-                                    <span>评论</span>
-                                </label>
-                                <div class="form-group">
-                                    <label>比例（0-1）</label>
-                                    <input type="number" class="form-control" id="advCommentRate" step="0.01" value="0.05" min="0" max="1">
-                                </div>
-                            </div>
-                            <div>
-                                <label style="display:flex; align-items:center; gap:8px;">
-                                    <input type="checkbox" id="advMentionEnabled">
-                                    <span>@用户</span>
-                                </label>
-                                <div class="form-group">
-                                    <label>比例（0-1）</label>
-                                    <input type="number" class="form-control" id="advMentionRate" step="0.01" value="0.03" min="0" max="1">
-                                </div>
-                            </div>
-                        </div>
-
-                        <!-- 评论模板和@用户 -->
-                        <div style="display:grid; grid-template-columns:1fr 1fr; gap:12px; margin-bottom:12px;">
-                            <div class="form-group">
-                                <label>评论模板（一行一个）</label>
-                                <textarea class="form-control" id="advCommentTemplates" placeholder="太棒了！&#10;学到了！&#10;支持支持&#10;666"></textarea>
-                            </div>
-                            <div class="form-group">
-                                <label>@用户列表（一行一个）</label>
-                                <textarea class="form-control" id="advMentionUsers" placeholder="user1&#10;user2"></textarea>
-                            </div>
-                        </div>
-
-                        <!-- 时间配置 -->
-                        <div style="display:grid; grid-template-columns:1fr 1fr 1fr 1fr; gap:12px; margin-bottom:12px;">
-                            <div class="form-group">
-                                <label>浏览间隔（秒）</label>
-                                <div style="display:flex; gap:8px;">
-                                    <input type="number" class="form-control" id="advViewMin" value="2" min="0.1">
-                                    <span>-</span>
-                                    <input type="number" class="form-control" id="advViewMax" value="4" min="0.1">
-                                </div>
-                            </div>
-                            <div class="form-group">
-                                <label>点赞间隔（秒）</label>
-                                <div style="display:flex; gap:8px;">
-                                    <input type="number" class="form-control" id="advLikeMin" value="0.5" min="0.1">
-                                    <span>-</span>
-                                    <input type="number" class="form-control" id="advLikeMax" value="1.5" min="0.1">
-                                </div>
-                            </div>
-                            <div class="form-group">
-                                <label>评论间隔（秒）</label>
-                                <div style="display:flex; gap:8px;">
-                                    <input type="number" class="form-control" id="advCommentMin" value="2" min="0.1">
-                                    <span>-</span>
-                                    <input type="number" class="form-control" id="advCommentMax" value="5" min="0.1">
-                                </div>
-                            </div>
-                            <div class="form-group">
-                                <label>@间隔（秒）</label>
-                                <div style="display:flex; gap:8px;">
-                                    <input type="number" class="form-control" id="advMentionMin" value="1" min="0.1">
-                                    <span>-</span>
-                                    <input type="number" class="form-control" id="advMentionMax" value="3" min="0.1">
-                                </div>
-                            </div>
-                        </div>
-
-                        <!-- 强制工作和休眠 -->
-                        <div style="display:grid; grid-template-columns:1fr 1fr 1fr; gap:12px; margin-bottom:12px;">
-                            <div class="form-group">
-                                <label>强制工作（分钟）</label>
-                                <input type="number" class="form-control" id="advForceWorkMin" value="60" min="1">
-                            </div>
-                            <div class="form-group">
-                                <label>强制休眠（分钟）</label>
-                                <input type="number" class="form-control" id="advForceSleepMin" value="30" min="1">
-                            </div>
-                            <div class="form-group">
-                                <label>最大浏览数（0不限）</label>
-                                <input type="number" class="form-control" id="advMaxViewCount" value="500" min="0">
-                            </div>
-                        </div>
-                    </div>
-
-                    <button class="btn btn-primary" id="createTaskBtn" style="margin-top:12px">创建任务</button>
-                </div>
-            </div>
-        </div>
-    </div>
-
-    <!-- App 设备管理面板 -->
-    <div class="panel panel-full" style="margin-top:16px;">
+    <!-- App 设备管理 -->
+    <div class="panel">
         <div class="panel-header">
-            <h3>📱 App 设备管理</h3>
-            <div style="display:flex; gap:8px;">
-                <span class="status-badge" style="background:#e3f2fd;color:#1976d2;">已连接: <b id="appDeviceCount">0</b></span>
-                <button class="btn btn-sm btn-default" onclick="loadAppDevices()">刷新</button>
-            </div>
+            <h2>已连接设备</h2>
+            <span class="status-badge" id="deviceCount">0 台在线</span>
         </div>
-        <div class="panel-body">
-            <!-- 设备列表 -->
-            <div id="appDeviceList" style="margin-bottom:16px;">
-                <div class="empty-state">暂无设备连接。请在 iPhone 上安装并打开 AutoBot App，设置为同一网络下的服务器地址</div>
-            </div>
-
-            <!-- 任务执行区（选择设备后显示） -->
-            <div id="appTaskSection" style="display:none;">
-                <div style="background:#f5f5f5;padding:12px;border-radius:8px;margin-bottom:12px;">
-                    <div style="font-size:13px;color:#666;margin-bottom:8px;">
-                        当前设备: <b id="selectedDeviceName">-</b>
-                        &nbsp;&nbsp;|&nbsp;&nbsp;
-                        系统: <b id="selectedDeviceVersion">-</b>
-                    </div>
-                </div>
-
-                <div style="display:grid; grid-template-columns:1fr 1fr; gap:16px; margin-bottom:16px;">
-                    <div>
-                        <div class="form-group">
-                            <label>目标平台</label>
-                            <select class="form-control" id="appTaskPlatform">
-                                <option value="xiaohongshu">小红书</option>
-                                <option value="douyin">抖音</option>
-                            </select>
-                        </div>
-                        <div class="form-group">
-                            <label>浏览滚动次数</label>
-                            <input type="number" class="form-control" id="appTaskScrollCount" value="10" min="1">
-                        </div>
-                        <div class="form-group">
-                            <label>操作间隔（秒）</label>
-                            <input type="number" class="form-control" id="appTaskInterval" value="2" min="0.5" step="0.5">
-                        </div>
-                    </div>
-                    <div>
-                        <div class="form-group">
-                            <label>互动操作</label>
-                            <div style="display:grid; grid-template-columns:1fr 1fr; gap:8px;">
-                                <label style="display:flex; align-items:center; gap:6px;">
-                                    <input type="checkbox" id="appTaskLike" checked>
-                                    <span style="font-size:13px;">❤️ 点赞</span>
-                                </label>
-                                <label style="display:flex; align-items:center; gap:6px;">
-                                    <input type="checkbox" id="appTaskFollow">
-                                    <span style="font-size:13px;">👤 关注</span>
-                                </label>
-                                <label style="display:flex; align-items:center; gap:6px;">
-                                    <input type="checkbox" id="appTaskComment">
-                                    <span style="font-size:13px;">💬 评论</span>
-                                </label>
-                                <label style="display:flex; align-items:center; gap:6px;">
-                                    <input type="checkbox" id="appTaskMessage">
-                                    <span style="font-size:13px;">📨 私信</span>
-                                </label>
-                            </div>
-                        </div>
-                        <div class="form-group">
-                            <label>点赞概率（0-1）</label>
-                            <input type="number" class="form-control" id="appTaskLikeRate" value="0.3" step="0.1" min="0" max="1">
-                        </div>
-                        <div class="form-group">
-                            <label>评论内容库（一行一个）</label>
-                            <textarea class="form-control" id="appTaskComments" rows="3" placeholder="太棒了！&#10;支持支持&#10;学习了&#10;哈哈哈哈"></textarea>
-                        </div>
-                    </div>
-                </div>
-
-                <div style="display:flex; gap:12px;">
-                    <button class="btn btn-primary" id="startAppTaskBtn" onclick="startAppTask()">▶️ 开始执行</button>
-                    <button class="btn btn-default" onclick="sendSingleAction('scroll')">测试: 滚动</button>
-                    <button class="btn btn-default" onclick="sendSingleAction('like')">测试: 点赞</button>
-                    <button class="btn btn-default" onclick="sendSingleAction('open_platform')">测试: 打开平台</button>
-                </div>
-            </div>
-        </div>
+        <div id="deviceList"></div>
     </div>
 
-    <!-- 执行日志 -->
-    <div class="panel panel-full" id="logPanel" style="display:none; margin-top:16px;">
+    <!-- 任务配置区（选中设备后显示） -->
+    <div id="taskSection" class="panel hidden">
         <div class="panel-header">
-            <h3>📝 执行日志</h3>
-            <button class="btn btn-sm btn-default" onclick="clearAppLogs()">清空</button>
+            <h2>📋 任务配置 - <span id="selectedDeviceName">-</span></h2>
         </div>
-        <div class="panel-body">
-            <div id="appLogContent" style="font-family:monospace;font-size:12px;line-height:1.6;max-height:300px;overflow-y:auto;"></div>
+
+        <div class="form-group">
+            <label>目标平台</label>
+            <select id="platform">
+                <option value="xiaohongshu">小红书</option>
+                <option value="douyin">抖音</option>
+            </select>
+        </div>
+
+        <div class="input-row">
+            <div class="form-group">
+                <label>滚动次数</label>
+                <input type="number" id="scrollCount" value="5" min="1" max="100">
+            </div>
+            <div class="form-group">
+                <label>操作间隔(秒)</label>
+                <input type="number" id="interval" value="1.5" min="0.5" max="10" step="0.1">
+            </div>
+        </div>
+
+        <div class="form-group">
+            <label>执行操作</label>
+            <div class="checklist">
+                <label><input type="checkbox" id="chkScroll" checked> 滚动</label>
+                <label><input type="checkbox" id="chkLike"> ❤️ 点赞</label>
+                <label><input type="checkbox" id="chkFollow"> ➕ 关注</label>
+                <label><input type="checkbox" id="chkComment"> 💬 评论</label>
+            </div>
+        </div>
+
+        <div class="form-group" id="commentBox" style="display:none;">
+            <label>评论内容（每行一条，随机使用）</label>
+            <textarea id="commentText">太棒了！
+支持一下
+关注了
+学到了
+哈哈哈</textarea>
+        </div>
+
+        <div class="btn-row">
+            <button class="btn btn-primary" id="startTaskBtn" onclick="startTask()">▶️ 开始执行</button>
+            <button class="btn btn-default" onclick="sendSingleAction('open_platform')">测试: 打开平台</button>
+            <button class="btn btn-default" onclick="sendSingleAction('scroll')">测试: 滚动</button>
+            <button class="btn btn-default" onclick="sendSingleAction('like')">测试: 点赞</button>
         </div>
     </div>
 
-    <script src="/static/js/app.js"></script>
-    <script>
-        // App 设备相关功能
+    <!-- 日志面板 -->
+    <div id="logPanelWrap" class="panel hidden">
+        <div class="panel-header">
+            <h2>📜 执行日志</h2>
+            <button class="btn btn-default" style="padding:6px 12px;font-size:12px;" onclick="clearLog()">清空</button>
+        </div>
+        <div id="logPanel">等待操作...</div>
+    </div>
+</div>
 
-        var selectedDeviceId = null;
-        var appLogEntries = [];
+<script>
+    var selectedDeviceId = null;
+    var ws = null;
 
-        // 加载 App 设备列表
-        function loadAppDevices() {
-            fetch('/api/app-devices')
-                .then(r => r.json())
-                .then(data => {
-                    const devices = data.devices || [];
-                    document.getElementById('appDeviceCount').textContent = devices.length;
-                    renderAppDevices(devices);
-                })
-                .catch(err => {
-                    document.getElementById('appDeviceList').innerHTML =
-                        '<div class="empty-state">加载失败: ' + err + '</div>';
-                });
-        }
+    // 显示评论框
+    document.getElementById('chkComment').addEventListener('change', function() {
+        document.getElementById('commentBox').style.display = this.checked ? 'block' : 'none';
+    });
 
-        function renderAppDevices(devices) {
-            const html = devices.map(d => `
-                <div class="device-card" style="border:1px solid #e0e0e0;border-radius:8px;padding:12px;margin-bottom:8px;cursor:pointer;${selectedDeviceId === d.device_id ? 'border-color:#2196f3;background:#e3f2fd;' : ''}" onclick="selectAppDevice('${d.device_id}', '${d.device_name}', '${d.system_version}')">
-                    <div style="display:flex; justify-content:space-between; align-items:center;">
-                        <div>
-                            <div style="font-weight:600;">📱 ${d.device_name}</div>
-                            <div style="font-size:12px;color:#666;margin-top:4px;">${d.system_version} | ${d.model} | ${d.app_version}</div>
-                            <div style="font-size:12px;color:#888;margin-top:2px;">ID: ${d.device_id.substring(0, 12)}...</div>
-                        </div>
-                        <div style="text-align:right;">
-                            <span style="display:inline-block;padding:4px 10px;border-radius:12px;font-size:11px;${d.status === 'running' ? 'background:#4caf50;color:white;' : 'background:#9e9e9e;color:white;'}">${d.status}</span>
-                            ${d.platform ? `<div style="font-size:11px;color:#666;margin-top:4px;">${d.platform}</div>` : ''}
-                        </div>
-                    </div>
-                </div>
-            `).join('');
+    // 连接前端 WebSocket，实时获取设备列表
+    function connectFrontendWS() {
+        var proto = location.protocol === 'https:' ? 'wss:' : 'ws:';
+        ws = new WebSocket(proto + '//' + location.host + '/ws/frontend');
 
-            document.getElementById('appDeviceList').innerHTML =
-                devices.length > 0 ? html : '<div class="empty-state">暂无设备连接。请在 iPhone 上安装并打开 AutoBot App</div>';
-        }
-
-        function selectAppDevice(deviceId, deviceName, systemVersion) {
-            selectedDeviceId = deviceId;
-            document.getElementById('selectedDeviceName').textContent = deviceName;
-            document.getElementById('selectedDeviceVersion').textContent = systemVersion;
-            document.getElementById('appTaskSection').style.display = 'block';
-            document.getElementById('logPanel').style.display = 'block';
-            loadAppDevices(); // 刷新高亮
-            addAppLog(`已选择设备: ${deviceName}`, 'info');
-        }
-
-        // 发送单个操作（测试用）
-        function sendSingleAction(action) {
-            if (!selectedDeviceId) {
-                alert('请先选择一个设备');
-                return;
+        ws.onmessage = function(event) {
+            try {
+                var data = JSON.parse(event.data);
+                if (data.type === 'app_devices') {
+                    renderDevices(data.devices || []);
+                }
+            } catch (e) {
+                console.error('解析失败', e);
             }
+        };
 
-            var params = {};
-            if (action === 'open_platform') {
-                params.platform = document.getElementById('appTaskPlatform').value;
-            }
+        ws.onclose = function() {
+            setTimeout(connectFrontendWS, 3000);  // 自动重连
+        };
 
-            addAppLog(`发送指令: ${action}`, 'action');
+        ws.onerror = function() {
+            // 降级：用轮询
+        };
+    }
 
-            fetch('/api/app-devices/' + selectedDeviceId + '/command', {
-                method: 'POST',
-                headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({
-                    action: action,
-                    platform: document.getElementById('appTaskPlatform').value,
-                    params: params
-                })
+    // 渲染设备列表
+    function renderDevices(devices) {
+        document.getElementById('deviceCount').textContent = devices.length + ' 台在线';
+
+        if (!devices || devices.length === 0) {
+            document.getElementById('deviceList').innerHTML =
+                '<div class="empty-state">暂无设备连接。<br><br>请在 iPhone 上安装并打开 AutoBot App，<br>在同一 WiFi 网络下连接此服务器。</div>';
+            return;
+        }
+
+        var html = '<div class="device-list">';
+        devices.forEach(function(d) {
+            var selected = selectedDeviceId === d.device_id ? 'selected' : '';
+            html += '<div class="device-card ' + selected + '" onclick="selectDevice(\'' + d.device_id + '\',\'' + d.device_name + '\')">';
+            html += '<div class="device-name">📱 ' + (d.device_name || 'iPhone') + '</div>';
+            html += '<div class="device-info">' + (d.system_version || '') + ' | App v' + (d.app_version || '') + '</div>';
+            html += '<div class="device-info">Model: ' + (d.model || '') + '</div>';
+            html += '<span class="device-status">' + (d.status || 'idle') + '</span>';
+            html += '</div>';
+        });
+        html += '</div>';
+        document.getElementById('deviceList').innerHTML = html;
+    }
+
+    // 选择设备
+    function selectDevice(deviceId, deviceName) {
+        selectedDeviceId = deviceId;
+        document.getElementById('selectedDeviceName').textContent = deviceName;
+        document.getElementById('taskSection').style.display = 'block';
+        document.getElementById('logPanelWrap').style.display = 'block';
+        addLog('已选择设备: ' + deviceName, 'info');
+        loadDevices();  // 刷新高亮
+    }
+
+    // 刷新设备列表
+    function loadDevices() {
+        fetch('/api/app-devices')
+            .then(function(r) { return r.json(); })
+            .then(function(data) {
+                renderDevices(data.devices || []);
             })
-            .then(r => r.json())
-            .then(data => {
-                addAppLog(`结果: ${data.success ? '✅ 成功' : '❌ 失败'} - ${data.message}`, data.success ? 'success' : 'error');
-            })
-            .catch(err => {
-                addAppLog(`错误: ${err}`, 'error');
+            .catch(function(err) {
+                document.getElementById('deviceList').innerHTML =
+                    '<div class="empty-state">加载失败: ' + err + '</div>';
             });
+    }
+
+    // 发送单个操作（测试用）
+    function sendSingleAction(action) {
+        if (!selectedDeviceId) {
+            alert('请先选择一个设备');
+            return;
         }
 
-        // 开始执行任务
-        function startAppTask() {
-            if (!selectedDeviceId) {
-                alert('请先选择一个设备');
-                return;
+        var params = {};
+        if (action === 'open_platform') {
+            params.platform = document.getElementById('platform').value;
+        } else if (action === 'scroll') {
+            params.direction = 'up';
+            params.count = 1;
+            params.interval = 1;
+        } else if (action === 'comment') {
+            params.text = '测试评论';
+        }
+
+        addLog('发送指令: ' + action, 'action');
+
+        fetch('/api/app-devices/' + selectedDeviceId + '/command', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+                action: action,
+                platform: document.getElementById('platform').value,
+                params: params
+            })
+        })
+        .then(function(r) { return r.json(); })
+        .then(function(data) {
+            if (data.success) {
+                addLog('✅ 成功 - ' + (data.message || ''), 'success');
+            } else {
+                addLog('❌ 失败 - ' + (data.message || ''), 'error');
             }
+        })
+        .catch(function(err) {
+            addLog('错误: ' + err, 'error');
+        });
+    }
 
-            const platform = document.getElementById('appTaskPlatform').value;
-            const scrollCount = parseInt(document.getElementById('appTaskScrollCount').value) || 10;
-            const interval = parseFloat(document.getElementById('appTaskInterval').value) || 2;
-            const likeEnabled = document.getElementById('appTaskLike').checked;
-            const followEnabled = document.getElementById('appTaskFollow').checked;
-            const commentEnabled = document.getElementById('appTaskComment').checked;
-            const messageEnabled = document.getElementById('appTaskMessage').checked;
-            const likeRate = parseFloat(document.getElementById('appTaskLikeRate').value) || 0.3;
+    // 开始执行复合任务
+    function startTask() {
+        if (!selectedDeviceId) {
+            alert('请先选择一个设备');
+            return;
+        }
 
-            // 构建操作序列
-            var operations = [
-                { action: 'open_platform', params: { platform: platform } }
-            ];
+        var platform = document.getElementById('platform').value;
+        var scrollCount = parseInt(document.getElementById('scrollCount').value) || 5;
+        var interval = parseFloat(document.getElementById('interval').value) || 1.5;
+        var likeEnabled = document.getElementById('chkLike').checked;
+        var followEnabled = document.getElementById('chkFollow').checked;
+        var commentEnabled = document.getElementById('chkComment').checked;
+        var scrollEnabled = document.getElementById('chkScroll').checked;
 
-            var commentsRaw = document.getElementById('appTaskComments').value.trim();
-            var comments = commentsRaw ? commentsRaw.split('\\n').filter(c => c.trim()) : ['很棒！', '支持支持', '学习了'];
+        // 构建操作列表
+        var operations = [{ action: 'open_platform', params: {} }];
 
-            for (var i = 0; i < scrollCount; i++) {
-                // 每次滚动后，根据概率执行互动
-                if (likeEnabled && Math.random() < likeRate) {
-                    operations.push({ action: 'like', params: {} });
-                }
-                if (commentEnabled && Math.random() < (likeRate * 0.5)) {
-                    var commentText = comments[Math.floor(Math.random() * comments.length)];
-                    operations.push({ action: 'comment', params: { text: commentText } });
-                }
-                if (followEnabled && Math.random() < (likeRate * 0.3)) {
-                    operations.push({ action: 'follow', params: {} });
-                }
-                if (messageEnabled && Math.random() < (likeRate * 0.2)) {
-                    operations.push({ action: 'message', params: { text: '你好！' } });
-                }
+        for (var i = 0; i < scrollCount; i++) {
+            if (scrollEnabled) {
                 operations.push({ action: 'scroll', params: { direction: 'up', count: 1, interval: interval } });
             }
-
-            addAppLog(`🚀 开始执行任务: ${operations.length} 个操作`, 'info');
-
-            document.getElementById('startAppTaskBtn').disabled = true;
-            document.getElementById('startAppTaskBtn').textContent = '⏳ 执行中...';
-
-            fetch('/api/app-devices/' + selectedDeviceId + '/task', {
-                method: 'POST',
-                headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({
-                    platform: platform,
-                    operations: operations,
-                    interval_between_operations: interval
-                })
-            })
-            .then(r => r.json())
-            .then(data => {
-                const results = data.results || [];
-                var successCount = 0;
-                results.forEach((r, idx) => {
-                    if (r.success) successCount++;
-                    addAppLog(`步骤 ${idx + 1}: ${r.action} - ${r.success ? '✅' : '❌'} ${r.message}`, r.success ? 'success' : 'error');
-                });
-                addAppLog(`任务完成: ${successCount}/${results.length} 成功`, 'info');
-            })
-            .catch(err => {
-                addAppLog(`任务失败: ${err}`, 'error');
-            })
-            .finally(() => {
-                document.getElementById('startAppTaskBtn').disabled = false;
-                document.getElementById('startAppTaskBtn').textContent = '▶️ 开始执行';
-            });
-        }
-
-        function addAppLog(msg, type) {
-            const time = new Date().toLocaleTimeString();
-            const colorMap = {
-                info: '#2196f3',
-                action: '#ff9800',
-                success: '#4caf50',
-                error: '#f44336'
-            };
-            const color = colorMap[type || 'info'] || '#333';
-            const html = `<div style="color:${color};">[${time}] ${msg}</div>`;
-            appLogEntries.push(html);
-            if (appLogEntries.length > 100) appLogEntries.shift();
-            document.getElementById('appLogContent').innerHTML = appLogEntries.join('');
-            document.getElementById('appLogContent').scrollTop = document.getElementById('appLogContent').scrollHeight;
-        }
-
-        function clearAppLogs() {
-            appLogEntries = [];
-            document.getElementById('appLogContent').innerHTML = '';
-        }
-
-        // 页面加载完成后自动加载
-        document.addEventListener('DOMContentLoaded', function() {
-            console.log('页面加载完成');
-            loadAppDevices();
-
-            // 每 10 秒刷新一次设备列表
-            setInterval(function() {
-                if (document.getElementById('appDeviceList')) {
-                    loadAppDevices();
-                }
-            }, 10000);
-
-            // 原有的任务创建按钮
-            const btn = document.getElementById('createTaskBtn');
-            if (btn) {
-                btn.addEventListener('click', function(e) {
-                    e.preventDefault();
-                    createTask();
-                });
+            if (likeEnabled) {
+                operations.push({ action: 'like', params: {} });
             }
+            if (followEnabled) {
+                operations.push({ action: 'follow', params: {} });
+            }
+            if (commentEnabled) {
+                var lines = document.getElementById('commentText').value.trim().split('\n');
+                var text = lines[Math.floor(Math.random() * lines.length)] || '支持';
+                operations.push({ action: 'comment', params: { text: text } });
+            }
+        }
+
+        addLog('开始执行任务 - ' + platform + ', ' + operations.length + ' 个操作', 'action');
+
+        document.getElementById('startTaskBtn').disabled = true;
+        document.getElementById('startTaskBtn').textContent = '⏳ 执行中...';
+
+        fetch('/api/app-devices/' + selectedDeviceId + '/task', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+                platform: platform,
+                operations: operations,
+                interval_between_operations: interval
+            })
+        })
+        .then(function(r) { return r.json(); })
+        .then(function(data) {
+            addLog('任务完成: ' + data.success_count + '/' + data.total_operations + ' 成功', 'success');
+            data.results.forEach(function(r) {
+                if (r.success) {
+                    addLog('  ✅ ' + r.action + ' - ' + r.message, 'success');
+                } else {
+                    addLog('  ❌ ' + r.action + ' - ' + r.message, 'error');
+                }
+            });
+        })
+        .catch(function(err) {
+            addLog('任务执行错误: ' + err, 'error');
+        })
+        .finally(function() {
+            document.getElementById('startTaskBtn').disabled = false;
+            document.getElementById('startTaskBtn').textContent = '▶️ 开始执行';
         });
-    </script>
+    }
+
+    // 日志
+    function addLog(text, type) {
+        var div = document.createElement('div');
+        div.className = 'log-entry ' + (type || '');
+        var time = new Date().toLocaleTimeString();
+        div.textContent = '[' + time + '] ' + text;
+        document.getElementById('logPanel').appendChild(div);
+        document.getElementById('logPanel').scrollTop = document.getElementById('logPanel').scrollHeight;
+    }
+
+    function clearLog() {
+        document.getElementById('logPanel').innerHTML = '';
+    }
+
+    // 初始化
+    connectFrontendWS();
+    loadDevices();
+    setInterval(loadDevices, 10000);  // 每 10 秒刷新一次（降级方案）
+</script>
 </body>
 </html>
