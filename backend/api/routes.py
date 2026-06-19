@@ -482,3 +482,180 @@ async def websocket_endpoint(ws: WebSocket):
                 await ws.send_text("pong")
     except WebSocketDisconnect:
         ws_manager.disconnect(ws)
+
+
+# ================== App 客户端 API ==================
+# iOS 助手 App 通过 WebSocket 连接，PC 前端通过 REST API 管理和下发指令
+
+# 导入 App 客户端 WebSocket 路由（内部注册）
+from backend.api.app_ws import router as app_ws_router
+app.include_router(app_ws_router)
+
+from backend.app_client import app_device_manager
+
+
+@app.get("/api/app-devices")
+async def list_app_devices():
+    """获取所有已连接的 App 设备列表"""
+    devices = app_device_manager.list_devices()
+    return {
+        "devices": [{
+            "device_id": d.device_id,
+            "device_name": d.device_name,
+            "system_version": d.system_version,
+            "app_version": d.app_version,
+            "model": d.model,
+            "status": d.status,
+            "platform": d.current_platform,
+            "connected_at": d.connected_at.isoformat()
+        } for d in devices],
+        "total": len(devices)
+    }
+
+
+@app.get("/api/app-devices/{device_id}")
+async def get_app_device(device_id: str):
+    """获取单个 App 设备信息"""
+    device = app_device_manager.get_device(device_id)
+    if not device:
+        raise HTTPException(status_code=404, detail="设备未连接")
+    return {
+        "device_id": device.device_id,
+        "device_name": device.device_name,
+        "system_version": device.system_version,
+        "app_version": device.app_version,
+        "model": device.model,
+        "status": device.status,
+        "platform": device.current_platform,
+        "connected_at": device.connected_at.isoformat()
+    }
+
+
+class AppCommandRequest(BaseModel):
+    """向 App 设备发送指令"""
+    action: str          # like | comment | follow | message | scroll | open_platform | custom_js
+    platform: str        # xiaohongshu | douyin | ...
+    params: dict = {}    # 额外参数
+
+
+@app.post("/api/app-devices/{device_id}/command")
+async def send_app_command(device_id: str, req: AppCommandRequest):
+    """
+    向 App 设备发送指令
+
+    可用 action:
+    - open_platform: 打开指定平台
+      params: { "platform": "xiaohongshu" }
+    - scroll: 滚动页面
+      params: { "direction": "up|down", "count": 1, "interval": 1.5 }
+    - like: 点赞当前帖子
+      params: {}
+    - comment: 发表评论
+      params: { "text": "评论内容" }
+    - follow: 关注当前作者
+      params: {}
+    - message: 发私信
+      params: { "text": "消息内容" }
+    - custom_js: 执行自定义 JS
+      params: { "js": "javascript code" }
+    """
+    device = app_device_manager.get_device(device_id)
+    if not device:
+        raise HTTPException(status_code=404, detail="设备未连接")
+
+    result = await app_device_manager.send_command(
+        device_id=device_id,
+        action=req.action,
+        platform=req.platform,
+        params=req.params
+    )
+
+    return {
+        "command_id": result.command_id,
+        "success": result.success,
+        "message": result.message,
+        "data": result.data,
+        "timestamp": result.timestamp.isoformat()
+    }
+
+
+@app.post("/api/app-devices/{device_id}/task")
+async def run_app_task(device_id: str, task_config: dict):
+    """
+    在 App 设备上执行自动化任务
+
+    task_config 示例:
+    {
+      "platform": "xiaohongshu",
+      "operations": [
+        { "action": "open_platform", "params": { "platform": "xiaohongshu" } },
+        { "action": "scroll", "params": { "direction": "up", "count": 5, "interval": 2 } },
+        { "action": "like", "params": {} },
+        { "action": "comment", "params": { "text": "很棒！" } }
+      ],
+      "interval_between_operations": 1.5
+    }
+    """
+    import asyncio
+    from datetime import datetime
+
+    device = app_device_manager.get_device(device_id)
+    if not device:
+        raise HTTPException(status_code=404, detail="设备未连接")
+
+    platform = task_config.get("platform", "xiaohongshu")
+    operations = task_config.get("operations", [])
+    interval = float(task_config.get("interval_between_operations", 1.5))
+
+    logger.info(f"[AppTask] 设备 {device_id} 开始执行任务: platform={platform} operations={len(operations)}")
+
+    results = []
+    for idx, op in enumerate(operations):
+        action = op.get("action", "")
+        params = op.get("params", {})
+
+        logger.info(f"[AppTask] 执行 {idx+1}/{len(operations)}: {action}")
+
+        result = await app_device_manager.send_command(
+            device_id=device_id,
+            action=action,
+            platform=platform,
+            params=params,
+            timeout=60
+        )
+
+        results.append({
+            "index": idx,
+            "action": action,
+            "success": result.success,
+            "message": result.message,
+            "data": result.data
+        })
+
+        if idx < len(operations) - 1 and result.success:
+            await asyncio.sleep(interval)
+
+    success_count = sum(1 for r in results if r["success"])
+    logger.info(f"[AppTask] 任务完成: {success_count}/{len(operations)} 成功")
+
+    return {
+        "device_id": device_id,
+        "total_operations": len(operations),
+        "success_count": success_count,
+        "results": results
+    }
+
+
+@app.get("/api/app-devices/platforms")
+async def list_supported_platforms():
+    """获取当前支持的平台列表"""
+    return {
+        "platforms": [
+            {
+                "id": "xiaohongshu",
+                "name": "小红书",
+                "url": "https://www.xiaohongshu.com",
+                "actions": ["open_platform", "scroll", "like", "comment", "follow", "message"]
+            }
+        ]
+    }
