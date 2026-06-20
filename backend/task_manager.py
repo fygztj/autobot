@@ -506,7 +506,7 @@ class TaskScheduler:
         self._save()
 
         await _send_event(f"⏰ 定时任务 [{job.name}] 开始执行")
-        task_statistics.record_action(device_id or "unknown", job.id, "task_start")
+        # 记录任务开始（设备ID在循环中逐个记录）
 
         try:
             for idx, assign in enumerate(job.assignments):
