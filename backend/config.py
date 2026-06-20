@@ -56,6 +56,9 @@ class Config:
     WEB_HOST: str = "0.0.0.0"
     WEB_PORT: int = 8550
 
+    # --- 认证 Token（为空则不校验，用于局域网使用；公网部署时必须设置）---
+    AUTH_TOKEN: str = ""  # 建议设置为随机字符串，如: python3 -c "import secrets;print(secrets.token_urlsafe(32))"
+
     # --- 应用包名 ---
     APP_PACKAGES: dict = field(default_factory=lambda: {
         "wechat": "com.tencent.mm",

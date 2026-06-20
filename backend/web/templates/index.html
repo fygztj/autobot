@@ -6,390 +6,663 @@
     <title>AutoBot - iOS 自动化助手</title>
     <style>
         * { box-sizing: border-box; margin: 0; padding: 0; }
-        body { font-family: -apple-system, BlinkMacSystemFont, "PingFang SC", sans-serif; background: #f5f5f7; color: #1d1d1f; padding: 20px; }
-        .container { max-width: 1200px; margin: 0 auto; }
-        h1 { font-size: 24px; margin-bottom: 16px; font-weight: 600; }
-        h2 { font-size: 16px; margin-bottom: 10px; font-weight: 600; }
-
-        .panel { background: white; border-radius: 12px; padding: 16px; margin-bottom: 12px; box-shadow: 0 2px 8px rgba(0,0,0,0.04); }
-        .panel-header { display: flex; justify-content: space-between; align-items: center; margin-bottom: 12px; }
-        .status-badge { display: inline-block; padding: 4px 12px; border-radius: 12px; font-size: 12px; background: #e8f5e9; color: #2e7d32; }
-        .status-badge.warning { background: #fff3e0; color: #e65100; }
-        .status-badge.gray { background: #e0e0e0; color: #555; }
-
-        .device-list { display: grid; grid-template-columns: repeat(auto-fill, minmax(240px, 1fr)); gap: 10px; }
-        .device-card { border: 2px solid #e0e0e0; border-radius: 8px; padding: 12px; cursor: pointer; transition: all 0.15s; }
-        .device-card:hover { border-color: #2196f3; background: #f8fbff; }
+        body { font-family: -apple-system, BlinkMacSystemFont, "PingFang SC", sans-serif; background: #f0f2f5; color: #1d1d1f; }
+        .topbar { background: linear-gradient(135deg, #1a1a2e 0%, #16213e 50%, #0f3460 100%); color: white; padding: 14px 24px; display: flex; align-items: center; gap: 20px; }
+        .topbar h1 { font-size: 18px; font-weight: 700; }
+        .tab-nav { background: white; display: flex; padding: 0 20px; border-bottom: 2px solid #e8eaed; }
+        .tab-btn { padding: 12px 22px; font-size: 13.5px; font-weight: 500; color: #666; cursor: pointer; border-bottom: 3px solid transparent; transition: all 0.15s; user-select: none; }
+        .tab-btn:hover { color: #333; background: #fafbfc; }
+        .tab-btn.active { color: #2196f3; border-bottom-color: #2196f3; }
+        .page-container { max-width: 1100px; margin: 0 auto; padding: 20px; }
+        .page { display: none; }
+        .page.active { display: block; }
+        .panel { background: white; border-radius: 10px; padding: 18px; margin-bottom: 16px; box-shadow: 0 1px 4px rgba(0,0,0,0.05); }
+        .panel-header { display: flex; justify-content: space-between; align-items: center; margin-bottom: 14px; }
+        .panel-header h2 { font-size: 15px; font-weight: 600; }
+        .status-badge { padding: 3px 11px; border-radius: 12px; font-size: 11.5px; background: #e8f5e9; color: #2e7d32; }
+        .status-badge.blue { background: #e3f2fd; color: #1565c0; }
+        .status-badge.gray { background: #eee; color: #777; }
+        .device-list { display: grid; grid-template-columns: repeat(auto-fill, minmax(220px, 1fr)); gap: 10px; }
+        .device-card { border: 2px solid #e8eaed; border-radius: 10px; padding: 14px; cursor: pointer; transition: all 0.15s; }
+        .device-card:hover { border-color: #90caf9; background: #f5f9ff; }
         .device-card.selected { border-color: #2196f3; background: #e3f2fd; }
         .device-name { font-weight: 600; font-size: 14px; margin-bottom: 4px; }
-        .device-info { font-size: 11px; color: #666; line-height: 1.5; }
-        .device-status { display: inline-block; padding: 2px 6px; border-radius: 6px; font-size: 10px; margin-top: 4px; background: #e8f5e9; color: #2e7d32; }
-
+        .device-info { font-size: 11px; color: #888; }
+        .device-status { display: inline-block; padding: 2px 7px; border-radius: 6px; font-size: 10px; background: #e8f5e9; color: #2e7d32; margin-top: 5px; }
         .form-group { margin-bottom: 10px; }
         label { display: block; font-size: 12px; color: #555; margin-bottom: 4px; font-weight: 500; }
-        select, input, textarea { width: 100%; padding: 8px 10px; border: 1px solid #d0d0d0; border-radius: 6px; font-size: 13px; font-family: inherit; }
+        select, input, textarea { width: 100%; padding: 8px 10px; border: 1.5px solid #ddd; border-radius: 7px; font-size: 13px; font-family: inherit; }
         textarea { resize: vertical; min-height: 50px; }
         select:focus, input:focus, textarea:focus { outline: none; border-color: #2196f3; }
-
         .btn-row { display: flex; gap: 8px; flex-wrap: wrap; margin-top: 10px; }
-        .btn { padding: 8px 14px; border: none; border-radius: 8px; font-size: 13px; font-weight: 500; cursor: pointer; transition: all 0.15s; font-family: inherit; }
+        .btn { padding: 8px 16px; border: none; border-radius: 7px; font-size: 13px; font-weight: 500; cursor: pointer; font-family: inherit; }
         .btn-primary { background: #2196f3; color: white; }
         .btn-primary:hover { background: #1976d2; }
-        .btn-default { background: #eef0f3; color: #1d1d1f; }
-        .btn-default:hover { background: #e0e2e7; }
-        .btn:disabled { opacity: 0.4; cursor: not-allowed; }
-
-        .checklist { display: flex; gap: 12px; flex-wrap: wrap; }
+        .btn-default { background: #f0f2f5; color: #444; border: 1px solid #ddd; }
+        .btn-default:hover { background: #e4e7eb; }
+        .quick-actions { display: flex; gap: 6px; flex-wrap: wrap; margin-top: 10px; }
+        .quick-actions .btn { padding: 5px 12px; font-size: 12px; }
+        .checklist { display: flex; gap: 14px; flex-wrap: wrap; }
         .checklist label { display: flex; align-items: center; cursor: pointer; font-weight: normal; font-size: 13px; margin: 0; }
-        .checklist input[type="checkbox"] { width: auto; margin-right: 6px; }
-
-        #logPanel { background: #1e1e1e; color: #d4d4d4; border-radius: 8px; padding: 12px; font-family: "SF Mono", Consolas, monospace; font-size: 12px; max-height: 260px; overflow-y: auto; white-space: pre-wrap; }
-        .log-entry { padding: 1px 0; }
-        .log-entry.info { color: #7fc1ff; }
-        .log-entry.success { color: #90ee90; }
-        .log-entry.error { color: #f48771; }
-        .log-entry.action { color: #ffd700; }
-
-        .empty-state { text-align: center; padding: 30px 10px; color: #888; font-size: 13px; }
+        .checklist input[type="checkbox"] { width: auto; margin-right: 5px; }
         .input-row { display: flex; gap: 10px; }
         .input-row > div { flex: 1; }
-
         .hint { font-size: 12px; color: #888; margin-bottom: 8px; }
+        .empty-state { text-align: center; padding: 36px 10px; color: #999; font-size: 13px; }
+        .mode-tabs { display: flex; gap: 4px; margin-bottom: 12px; }
+        .mode-tab { padding: 8px 18px; border: 2px solid #e0e0e0; border-radius: 8px; cursor: pointer; font-size: 13px; font-weight: 500; background: white; }
+        .mode-tab.active { border-color: #2196f3; background: #e3f2fd; color: #1976d2; }
+        .mode-panel { display: none; padding: 12px; background: #fafbfc; border-radius: 8px; border: 1px solid #e8e8e8; margin-top: 10px; }
+        .mode-panel.active { display: block; }
+        .sub-section { margin-bottom: 12px; padding-bottom: 12px; border-bottom: 1px solid #eee; }
+        .sub-section:last-child { border-bottom: none; margin-bottom: 0; padding-bottom: 0; }
+        .sub-section h4 { font-size: 13px; color: #333; margin-bottom: 8px; }
+        .line-badge { display: inline-block; padding: 1px 8px; border-radius: 4px; font-size: 11px; font-weight: 600; }
+        .line-main { background: #fff3e0; color: #e65100; }
+        .line-sec { background: #e8f5e9; color: #2e7d32; }
+        .prob-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(140px, 1fr)); gap: 8px; }
+        .prob-item label { display: flex; justify-content: space-between; align-items: center; font-size: 12px; }
+        .prob-item input[type="number"] { width: 60px; text-align: center; padding: 4px 6px; }
+        #logPanel { background: #1e1e2e; color: #cdd6f4; border-radius: 8px; padding: 14px; font-family: monospace; font-size: 12px; max-height: 480px; overflow-y: auto; white-space: pre-wrap; line-height: 1.65; }
+        .log-entry { padding: 1px 0; }
+        .log-info { color: #89b4fa; }
+        .log-success { color: #a6e3a1; }
+        .log-error { color: #f38ba8; }
+        .log-action { color: #f9e2af; }
+        table { width: 100%; border-collapse: collapse; font-size: 12px; }
+        th { text-align: left; padding: 8px 10px; background: #f8f9fa; font-weight: 600; color: #555; border-bottom: 2px solid #eee; }
+        td { padding: 8px 10px; border-bottom: 1px solid #f0f0f0; }
+        tr:hover td { background: #fafbff; }
+        @media (max-width: 768px) { .page-container { padding: 12px; } .input-row { flex-direction: column; } }
     </style>
 </head>
 <body>
-<div class="container">
-    <h1>📱 AutoBot - iOS 自动化助手</h1>
 
-    <!-- 设备列表 -->
+<!-- 顶部栏 -->
+<div class="topbar">
+    <h1>📱 AutoBot</h1>
+    <span>iOS 自动化助手 v3</span>
+    <span id="globalDeviceBadge" style="font-size:12px;opacity:0.8;">0 台设备在线</span>
+</div>
+
+<!-- Tab 导航 -->
+<nav class="tab-nav" id="tabNav">
+    <div class="tab-btn active" data-page="devices" onclick="console.log('click devices');switchTab('devices')">📱 设备</div>
+    <div class="tab-btn" data-page="tasks" onclick="console.log('click tasks');switchTab('tasks')">🚀 任务配置</div>
+    <div class="tab-btn" data-page="templates" onclick="console.log('click templates');switchTab('templates')">📋 模板管理</div>
+    <div class="tab-btn" data-page="schedule" onclick="console.log('click schedule');switchTab('schedule')">⏰ 定时任务</div>
+    <div class="tab-btn" data-page="logs" onclick="console.log('click logs');switchTab('logs')">📜 执行日志</div>
+</nav>
+
+<div class="page-container">
+
+<!-- 设备页 -->
+<div class="page active" id="page-devices">
     <div class="panel">
-        <div class="panel-header">
-            <h2>已连接设备 <small style="font-weight: normal; color: #888; font-size: 12px;">点击设备卡片选中它</small></h2>
-            <span class="status-badge" id="deviceCount">0 台在线</span>
+        <div style="display:flex;align-items:center;gap:12px;margin-bottom:10px;">
+            <label style="font-size:12px;color:#888;margin:0;white-space:nowrap;">连接 Token:</label>
+            <input type="password" id="authToken" placeholder="局域网使用可留空" style="flex:1;padding:6px 10px;font-size:12px;border-radius:6px;">
+            <button class="btn btn-default" style="padding:5px 12px;font-size:11px;" onclick="saveToken()">保存</button>
         </div>
-        <div id="deviceList"></div>
     </div>
-
-    <!-- 任务配置区 -->
     <div class="panel">
-        <div class="panel-header">
-            <h2>📋 任务配置</h2>
-            <span class="status-badge gray" id="selectedDevice">未选择设备</span>
-        </div>
-
-        <div class="form-group">
-            <label>目标平台</label>
-            <select id="platform">
-                <option value="xiaohongshu">小红书</option>
-                <option value="douyin">抖音</option>
-            </select>
-        </div>
-
-        <div class="input-row">
-            <div class="form-group">
-                <label>滚动次数</label>
-                <input type="number" id="scrollCount" value="5" min="1" max="100">
-            </div>
-            <div class="form-group">
-                <label>操作间隔(秒)</label>
-                <input type="number" id="interval" value="1.5" min="0.5" max="10" step="0.1">
-            </div>
-        </div>
-
-        <div class="form-group">
-            <label>执行操作</label>
-            <div class="checklist">
-                <label><input type="checkbox" id="chkScroll" checked> 滚动</label>
-                <label><input type="checkbox" id="chkLike"> ❤️ 点赞</label>
-                <label><input type="checkbox" id="chkFollow"> ➕ 关注</label>
-                <label><input type="checkbox" id="chkComment"> 💬 评论</label>
-            </div>
-        </div>
-
-        <div class="form-group" id="commentBox" style="display:none;">
-            <label>评论内容（每行一条，随机使用）</label>
-            <textarea id="commentText">太棒了！
-支持一下
-学到了
-哈哈哈</textarea>
-        </div>
-
-        <div class="btn-row">
-            <button class="btn btn-primary" id="startTaskBtn" onclick="startTask()">▶️ 开始执行</button>
-            <button class="btn btn-default" onclick="sendSingleAction('open_platform')">测试: 打开平台</button>
-            <button class="btn btn-default" onclick="sendSingleAction('scroll')">测试: 滚动</button>
-            <button class="btn btn-default" onclick="sendSingleAction('like')">测试: 点赞</button>
-        </div>
-
-        <div class="hint" id="hint" style="margin-top: 10px;">💡 先在上方点击一个设备卡片，然后开始执行任务</div>
+        <div class="panel-header"><h2>已连接设备</h2><span class="status-badge blue" id="selectedDeviceInfo">未选择设备</span></div>
+        <div id="deviceList"><div class="empty-state">暂无设备连接</div></div>
     </div>
-
-    <!-- 日志面板 -->
     <div class="panel">
-        <div class="panel-header">
-            <h2>📜 执行日志</h2>
-            <button class="btn btn-default" style="padding:4px 10px;font-size:11px;" onclick="clearLog()">清空</button>
+        <div class="panel-header"><h2>⚡ 快捷操作</h2></div>
+        <select id="platform" style="width:auto;min-width:120px;margin-bottom:10px;">
+            <option value="xiaohongshu">小红书</option>
+            <option value="douyin">抖音</option>
+        </select>
+        <div class="quick-actions">
+            <button class="btn btn-default" onclick="sendSingleAction('open_platform')">打开平台</button>
+            <button class="btn btn-default" onclick="sendSingleAction('scroll')">滚动</button>
+            <button class="btn btn-default" onclick="sendSingleAction('like')">点赞</button>
+            <button class="btn btn-default" onclick="sendSingleAction('click_random_note')">随机笔记</button>
+            <button class="btn btn-default" onclick="sendSingleAction('collect')">收藏</button>
+            <button class="btn btn-default" onclick="sendSingleAction('go_back')">返回</button>
         </div>
-        <div id="logPanel">日志将在这里显示...</div>
+        <p class="hint" id="hint" style="margin-top:10px;">💡 先点击设备卡片选中设备</p>
     </div>
 </div>
 
-<script>
-    // ============ 全局状态 ============
-    var selectedDeviceId = null;
-    var deviceList = [];
-    var ws = null;
+<!-- 任务配置页 -->
+<div class="page" id="page-tasks">
+    <div class="panel">
+        <div class="panel-header"><h2>🚀 v3 智能任务</h2><span class="status-badge blue" id="taskDeviceBadge">-</span></div>
+        <div class="mode-tabs">
+            <div class="mode-tab active" onclick="switchMode('nurture')" id="tabNurture">🌱 养号模式</div>
+            <div class="mode-tab" onclick="switchMode('work')" id="tabWork">💼 工作模式</div>
+        </div>
+        <div class="mode-panel active" id="panelNurture">
+            <div class="sub-section">
+                <h4>🔍 搜索关键词</h4>
+                <textarea id="nurtureKeywords" placeholder="每行一个关键词">美食推荐
+旅行攻略
+穿搭分享</textarea>
+            </div>
+            <div class="input-row">
+                <div class="form-group"><label>⏱️ 总时长最小(秒)</label><input type="number" id="nurtureDurMin" value="120" min="30" max="3600"></div>
+                <div class="form-group"><label>⏱️ 总时长最大(秒)</label><input type="number" id="nurtureDurMax" value="300" min="30" max="7200"></div>
+                <div class="form-group"><label>点赞率(0~1)</label><input type="number" id="nurtureLikeRate" value="0.7" min="0" max="1" step="0.1"></div>
+            </div>
+            <div class="input-row">
+                <div class="form-group"><label>浏览(s)最小</label><input type="number" id="nurtureViewMin" value="3" min="1"></div>
+                <div class="form-group"><label>浏览(s)最大</label><input type="number" id="nurtureViewMax" value="8" min="1"></div>
+                <div class="form-group"><label>休息(s)最小</label><input type="number" id="nurtureRestMin" value="2" min="1"></div>
+                <div class="form-group"><label>休息(s)最大</label><input type="number" id="nurtureRestMax" value="5" min="1"></div>
+            </div>
+        </div>
+        <div class="mode-panel" id="panelWork">
+            <div class="input-row">
+                <div class="form-group"><label>总时长(分钟,0=不限)</label><input type="number" id="workDuration" value="0" min="0"></div>
+                <div class="form-group"><label>浏览(s)最小</label><input type="number" id="workViewMin" value="5" min="1"></div>
+                <div class="form-group"><label>浏览(s)最大</label><input type="number" id="workViewMax" value="15" min="1"></div>
+            </div>
+            <div class="sub-section">
+                <h4>默认互动概率</h4>
+                <div class="prob-grid">
+                    <div class="prob-item"><label>点赞率<input type="number" id="probLike" value="0.65" min="0" max="1" step="0.05"></label></div>
+                    <div class="prob-item"><label>评论率<input type="number" id="probComment" value="0.25" min="0" max="1" step="0.05"></label></div>
+                    <div class="prob-item"><label>收藏率<input type="number" id="probCollect" value="0.08" min="0" max="1" step="0.05"></label></div>
+                    <div class="prob-item"><label>关注率<input type="number" id="probFollow" value="0.03" min="0" max="1" step="0.05"></label></div>
+                </div>
+            </div>
+            <div class="sub-section">
+                <h4><span class="line-badge line-main">主线</span> 核心内容</h4>
+                <div class="input-row">
+                    <div class="form-group"><label>关键词</label><textarea id="mainKeywords">AI工具
+效率提升</textarea></div>
+                    <div class="form-group"><label>回复模板</label><textarea id="mainReplies">学到了！感谢分享
+太有用了，已收藏</textarea></div>
+                </div>
+            </div>
+            <div class="sub-section">
+                <h4><span class="line-badge line-sec">次线</span> 副内容</h4>
+                <div class="input-row">
+                    <div class="form-group"><label>关键词</label><textarea id="secKeywords">生活日常
+随拍</textarea></div>
+                    <div class="form-group"><label>回复模板</label><textarea id="secReplies">不错哦
+挺好的</textarea></div>
+                </div>
+            </div>
+        </div>
+        <hr style="margin:16px 0;border-top:1px dashed #ddd;">
+        <div class="btn-row">
+            <button class="btn btn-primary" style="background:#e65100;font-size:14px;padding:10px 28px;" onclick="startV3Task()">🚀 立即执行</button>
+            <button class="btn btn-primary" style="font-size:13px;" onclick="showSaveTemplateModal()">💾 保存为模板</button>
+        </div>
+    </div>
+</div>
 
-    // ============ 工具函数 ============
-    function addLog(text, type) {
+<!-- 模板管理页 -->
+<div class="page" id="page-templates">
+    <div class="panel">
+        <div class="panel-header">
+            <h2>📋 任务模板</h2>
+            <button class="btn btn-default" style="padding:5px 12px;font-size:12px;" onclick="loadTemplates()">刷新列表</button>
+        </div>
+        <div id="templateList"><div class="empty-state">点击刷新按钮加载模板</div></div>
+    </div>
+</div>
+
+<!-- 定时任务页 -->
+<div class="page" id="page-schedule">
+    <div class="panel">
+        <div class="panel-header">
+            <h2>⏰ 定时任务调度</h2>
+            <div style="display:flex;gap:6px;">
+                <button class="btn btn-default" style="padding:5px 12px;font-size:12px;" onclick="loadSchedules()">刷新</button>
+                <button class="btn btn-primary" style="padding:5px 12px;font-size:12px;background:#7c3aed;" onclick="showScheduleEditor()">+ 新建</button>
+            </div>
+        </div>
+        <div id="scheduleList"><div class="empty-state">点击刷新按钮加载定时任务</div></div>
+    </div>
+</div>
+
+<!-- 日志页 -->
+<div class="page" id="page-logs">
+    <div class="panel">
+        <div class="panel-header">
+            <h2>📜 执行日志</h2>
+            <button class="btn btn-default" style="padding:5px 12px;font-size:12px;" onclick="clearLog()">清空日志</button>
+        </div>
+        <div id="logPanel"></div>
+    </div>
+</div>
+
+</div>
+
+<script>
+// ===== 调试：确认 JS 加载 =====
+console.log('=== AutoBot v3 JS 开始加载 ===');
+try {
+    console.log('DOM ready, elements:', {
+        tabNav: !!document.getElementById('tabNav'),
+        logPanel: !!document.getElementById('logPanel'),
+        deviceList: !!document.getElementById('deviceList')
+    });
+} catch(e) { console.error('DOM check error:', e); }
+
+// ===== Tab 切换 =====
+function switchTab(pageName) {
+    console.log('switchTab called:', pageName);
+    try {
+        document.querySelectorAll('.tab-btn').forEach(function(btn) {
+            btn.classList.toggle('active', btn.getAttribute('data-page') === pageName);
+        });
+        document.querySelectorAll('.page').forEach(function(p) {
+            p.classList.toggle('active', p.id === 'page-' + pageName);
+        });
+        if (pageName === 'templates') loadTemplates();
+        if (pageName === 'schedule') loadSchedules();
+        console.log('switchTab done:', pageName);
+    } catch(e) { console.error('switchTab error:', e); }
+}
+
+// ===== 全局状态 =====
+var selectedDeviceId = null;
+var deviceList = [];
+
+// ===== 工具函数 =====
+function addLog(text, type) {
+    try {
         var div = document.createElement('div');
-        div.className = 'log-entry ' + (type || '');
+        div.className = 'log-entry log-' + (type || 'info');
         var time = new Date().toLocaleTimeString();
         div.textContent = '[' + time + '] ' + text;
-        document.getElementById('logPanel').appendChild(div);
-        document.getElementById('logPanel').scrollTop = document.getElementById('logPanel').scrollHeight;
+        var panel = document.getElementById('logPanel');
+        if (panel) { panel.appendChild(div); panel.scrollTop = panel.scrollHeight; }
+        else { console.log('[LOG]', text); }
+    } catch(e) { console.log('[LOG]', text, '(error:', e, ')'); }
+}
+function clearLog() {
+    var panel = document.getElementById('logPanel');
+    if (panel) panel.innerHTML = '';
+}
+function saveToken() {
+    var t = document.getElementById('authToken').value.trim();
+    if (t) localStorage.setItem('autobot_token', t);
+    addLog('Token 已保存', 'success');
+}
+
+function apiFetch(url, options) {
+    var token = document.getElementById('authToken').value.trim();
+    if (token) {
+        localStorage.setItem('autobot_token', token);
+        options = options || {};
+        options.headers = options.headers || {};
+        options.headers['X-Auth-Token'] = token;
     }
+    return fetch(url, options);
+}
 
-    function clearLog() {
-        document.getElementById('logPanel').innerHTML = '';
+(function(){
+    var saved = localStorage.getItem('autobot_token');
+    if (saved) { var el = document.getElementById('authToken'); if (el) el.value = saved; }
+})();
+
+// ===== 设备列表 =====
+function renderDevices(devices) {
+    deviceList = devices || [];
+    var badge = document.getElementById('globalDeviceBadge');
+    if (badge) badge.textContent = deviceList.length + ' 台设备在线';
+    if (deviceList.length === 0) {
+        document.getElementById('deviceList').innerHTML = '<div class="empty-state">暂无设备连接</div>';
+        return;
     }
-
-    // ============ 设备列表渲染 ============
-    function renderDevices(devices) {
-        deviceList = devices || [];
-        document.getElementById('deviceCount').textContent = (deviceList.length) + ' 台在线';
-
-        if (deviceList.length === 0) {
-            document.getElementById('deviceList').innerHTML =
-                '<div class="empty-state">暂无设备连接。<br><br>请在 iPhone 上安装并打开 AutoBot App，<br>在同一 WiFi 网络下连接此服务器。</div>';
-            updateSelectedDeviceUI();
-            return;
-        }
-
-        var html = '<div class="device-list">';
-        devices.forEach(function(d) {
-            var isSelected = (selectedDeviceId && selectedDeviceId === d.device_id) ? 'selected' : '';
-            html += '<div class="device-card ' + isSelected + '" data-device-id="' + d.device_id + '" data-device-name="' + (d.device_name || 'iPhone') + '">';
-            html += '<div class="device-name">📱 ' + (d.device_name || 'iPhone') + '</div>';
-            html += '<div class="device-info">' + (d.system_version || '') + ' | App v' + (d.app_version || '') + '</div>';
-            html += '<div class="device-info">Model: ' + (d.model || '') + '</div>';
-            html += '<span class="device-status">' + (d.status || 'idle') + '</span>';
-            html += '</div>';
-        });
+    var html = '<div class="device-list">';
+    devices.forEach(function(d) {
+        var isSelected = selectedDeviceId === d.device_id ? 'selected' : '';
+        html += '<div class="device-card ' + isSelected + '" data-id="' + d.device_id + '" data-name="' + (d.device_name || 'iPhone') + '">';
+        html += '<div class="device-name">' + (d.device_name || 'iPhone') + '</div>';
+        html += '<div class="device-info">' + (d.system_version || '') + ' | App v' + (d.app_version || '') + '</div>';
+        html += '<span class="device-status">' + (d.status || 'idle') + '</span>';
         html += '</div>';
-        document.getElementById('deviceList').innerHTML = html;
-
-        // 事件委托绑定点击
-        document.querySelectorAll('.device-card').forEach(function(card) {
-            card.addEventListener('click', function() {
-                selectDevice(card.getAttribute('data-device-id'), card.getAttribute('data-device-name'));
-            });
+    });
+    html += '</div>';
+    document.getElementById('deviceList').innerHTML = html;
+    document.querySelectorAll('.device-card').forEach(function(card) {
+        card.addEventListener('click', function() {
+            selectDevice(card.getAttribute('data-id'), card.getAttribute('data-name'));
         });
-    }
+    });
+}
 
-    // ============ 选中设备 ============
-    function selectDevice(deviceId, deviceName) {
-        selectedDeviceId = deviceId;
-        updateSelectedDeviceUI();
-        addLog('已选择设备: ' + deviceName, 'info');
+function selectDevice(deviceId, deviceName) {
+    selectedDeviceId = deviceId;
+    addLog('已选择设备: ' + deviceName, 'info');
+    document.querySelectorAll('.device-card').forEach(function(card) {
+        card.classList.toggle('selected', card.getAttribute('data-id') === deviceId);
+    });
+    var badge = document.getElementById('taskDeviceBadge');
+    if (badge) badge.textContent = '已选: ' + deviceName;
+    var hint = document.getElementById('hint');
+    if (hint) hint.textContent = '✅ 已选中设备，可以开始执行任务';
+}
 
-        // 刷新设备列表高亮
-        document.querySelectorAll('.device-card').forEach(function(card) {
-            if (card.getAttribute('data-device-id') === deviceId) {
-                card.classList.add('selected');
-            } else {
-                card.classList.remove('selected');
-            }
-        });
-    }
+function loadDevices() {
+    apiFetch('/api/app-devices')
+        .then(function(r) { return r.json(); })
+        .then(function(data) { renderDevices(data.devices || []); })
+        .catch(function(err) { console.log('加载设备失败:', err); });
+}
 
-    function updateSelectedDeviceUI() {
-        if (selectedDeviceId) {
-            var dev = deviceList.find(function(d) { return d.device_id === selectedDeviceId; });
-            var name = dev ? dev.device_name : '设备';
-            document.getElementById('selectedDevice').textContent = name;
-            document.getElementById('selectedDevice').className = 'status-badge';
-            document.getElementById('hint').textContent = '✅ 已选中设备，可以开始执行任务';
-            document.getElementById('startTaskBtn').disabled = false;
-        } else {
-            document.getElementById('selectedDevice').textContent = '未选择设备';
-            document.getElementById('selectedDevice').className = 'status-badge gray';
-            document.getElementById('hint').textContent = '💡 先在上方点击一个设备卡片，然后开始执行任务';
-            document.getElementById('startTaskBtn').disabled = true;
-        }
-    }
-
-    // ============ 刷新设备列表（REST API） ============
-    function loadDevices() {
-        fetch('/api/app-devices')
-            .then(function(r) { return r.json(); })
-            .then(function(data) {
-                renderDevices(data.devices || []);
-                // 如果之前选过设备，检查是否仍然存在
-                if (selectedDeviceId) {
-                    var exists = (data.devices || []).some(function(d) {
-                        return d.device_id === selectedDeviceId;
-                    });
-                    if (!exists) {
-                        selectedDeviceId = null;
-                        updateSelectedDeviceUI();
-                    }
-                }
-            })
-            .catch(function(err) {
-                document.getElementById('deviceList').innerHTML =
-                    '<div class="empty-state">加载失败: ' + err + '</div>';
-            });
-    }
-
-    // ============ WebSocket 实时更新 ============
-    function connectFrontendWS() {
+function connectFrontendWS() {
+    try {
         var proto = location.protocol === 'https:' ? 'wss:' : 'ws:';
-        ws = new WebSocket(proto + '//' + location.host + '/ws/frontend');
-
+        var ws = new WebSocket(proto + '//' + location.host + '/ws/frontend');
         ws.onmessage = function(event) {
             try {
                 var data = JSON.parse(event.data);
-                if (data.type === 'app_devices') {
-                    renderDevices(data.devices || []);
-                }
-            } catch (e) {
-                console.error('解析失败', e);
-            }
+                if (data.type === 'app_devices') renderDevices(data.devices || []);
+                else if (data.type === 'log') addLog(data.message, data.level || 'info');
+                else if (data.type === 'schedule_event') addLog(data.message, 'action');
+            } catch(e) {}
         };
-
-        ws.onclose = function() {
-            setTimeout(connectFrontendWS, 3000);
-        };
-
+        ws.onclose = function() { setTimeout(connectFrontendWS, 3000); };
         ws.onerror = function() {};
+    } catch(e) { console.log('WebSocket 连接失败:', e); }
+}
+
+// ===== 单指令 =====
+function sendSingleAction(action) {
+    if (!selectedDeviceId) { alert('请先选择设备'); return; }
+    var params = {};
+    if (action === 'open_platform') params.platform = document.getElementById('platform').value;
+    addLog('发送指令: ' + action, 'action');
+    apiFetch('/api/app-devices/' + encodeURIComponent(selectedDeviceId) + '/command', {
+        method: 'POST', headers:{'Content-Type':'application/json'},
+        body: JSON.stringify({ action: action, platform: document.getElementById('platform').value, params: params })
+    }).then(function(r){return r.json();}).then(function(data){
+        addLog((data.success?'✅ 成功':'❌ 失败') + ' - ' + (data.message||action), data.success?'success':'error');
+    }).catch(function(err){ addLog('请求错误: '+err,'error'); });
+}
+
+// ===== v3 双模式 =====
+var currentMode = 'nurture';
+function switchMode(mode) {
+    currentMode = mode;
+    document.getElementById('tabNurture').className = 'mode-tab' + (mode === 'nurture' ? ' active' : '');
+    document.getElementById('tabWork').className = 'mode-tab' + (mode === 'work' ? ' active' : '');
+    document.getElementById('panelNurture').className = 'mode-panel' + (mode === 'nurture' ? ' active' : '');
+    document.getElementById('panelWork').className = 'mode-panel' + (mode === 'work' ? ' active' : '');
+}
+
+function getVal(id,d){var e=document.getElementById(id);return e&&e.value!==''?e.value:d;}
+function getNum(id,d){var v=parseFloat(getVal(id,''));return isNaN(v)?d:v;}
+function getInt(id,d){var v=parseInt(getVal(id,''));return isNaN(v)?d:v;}
+function getLines(id){var t=(getVal(id,'')||'').trim();return t?t.split('\n').map(function(s){return s.trim();}).filter(function(s){return s.length>0;}):[];}
+function setVal(id,v){var el=document.getElementById(id);if(el)el.value=v;}
+
+function buildV3Config() {
+    if(currentMode==='nurture'){
+        return{mode:'nurture',platform:document.getElementById('platform').value,nurture:{
+            searchKeywords:getLines('nurtureKeywords'),useSearch:true,
+            likeRate:getNum('nurtureLikeRate',0.7),
+            durationRange:{min:getInt('nurtureDurMin',120),max:getInt('nurtureDurMax',300)},
+            viewTimeRange:{min:getInt('nurtureViewMin',3),max:getInt('nurtureViewMax',8)},
+            restRange:{min:getInt('nurtureRestMin',2),max:getInt('nurtureRestMax',5)},
+            keywordRestRange:{min:5,max:15}
+        }};
+    }else{
+        return{mode:'work',platform:document.getElementById('platform').value,work:{
+            totalDurationMinutes:getInt('workDuration',0),
+            viewTimeRange:{min:getInt('workViewMin',5),max:getInt('workViewMax',15)},
+            restBetweenNotes:{min:3,max:8},
+            restBetweenLines:{min:15,max:40},
+            browseComments:true,commentScrollCount:2,
+            defaultProbabilities:{likeRate:getNum('probLike',0.65),commentRate:getNum('probComment',0.25),replyRate:0.15,collectRate:getNum('probCollect',0.08),followRate:getNum('probFollow',0.03)},
+            mainLine:{name:'主线',keywords:getLines('mainKeywords'),mentionAccounts:[],mentionProbability:0.3,notesPerRound:3,defaultReplies:getLines('mainReplies'),keywordReplies:{},probabilities:null},
+            secondaryLine:{name:'次线',keywords:getLines('secKeywords'),notesPerRound:2,defaultReplies:getLines('secReplies'),keywordReplies:{},probabilities:null},
+            alternation:{mainRounds:3,secondaryRounds:2,startWith:'main'}
+        }};
     }
+}
 
-    // ============ 发送单个指令 ============
-    function sendSingleAction(action) {
-        if (!selectedDeviceId) {
-            alert('请先点击上方的设备卡片选择一个设备');
-            return;
-        }
+function startV3Task() {
+    if(!selectedDeviceId){alert('请先选择设备');return;}
+    var config=buildV3Config();
+    addLog('🚀 启动 v3: '+(config.mode==='nurture'?'🌱养号':'💼工作'),'action');
+    apiFetch('/api/app-devices/'+encodeURIComponent(selectedDeviceId)+'/command',{
+        method:'POST',headers:{'Content-Type':'application/json'},
+        body:JSON.stringify({action:'run_task_v3',platform:config.platform,params:{config:config}})
+    }).then(function(r){return r.json();}).then(function(data){
+        if(data.success){addLog('✅ v3 已发送','success');switchTab('logs');}
+        else{addLog('❌ 失败: '+(data.message||''),'error');}
+    }).catch(function(err){addLog('请求错误: '+err,'error');});
+}
 
-        var params = {};
-        if (action === 'open_platform') {
-            params.platform = document.getElementById('platform').value;
-        } else if (action === 'scroll') {
-            params.direction = 'up';
-            params.count = 1;
-            params.interval = 1;
-        } else if (action === 'comment') {
-            params.text = '测试评论';
-        }
-
-        addLog('发送指令: ' + action, 'action');
-
-        fetch('/api/app-devices/' + encodeURIComponent(selectedDeviceId) + '/command', {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({
-                action: action,
-                platform: document.getElementById('platform').value,
-                params: params
-            })
-        })
-        .then(function(r) { return r.json(); })
-        .then(function(data) {
-            if (data.success) {
-                addLog('✅ 成功 - ' + (data.message || action), 'success');
-            } else {
-                addLog('❌ 失败 - ' + (data.message || '未知错误'), 'error');
-            }
-        })
-        .catch(function(err) {
-            addLog('请求错误: ' + err, 'error');
-        });
-    }
-
-    // ============ 开始执行复合任务 ============
-    function startTask() {
-        if (!selectedDeviceId) {
-            alert('请先点击上方的设备卡片选择一个设备');
-            return;
-        }
-
-        var platform = document.getElementById('platform').value;
-        var scrollCount = parseInt(document.getElementById('scrollCount').value) || 5;
-        var interval = parseFloat(document.getElementById('interval').value) || 1.5;
-        var likeEnabled = document.getElementById('chkLike').checked;
-        var followEnabled = document.getElementById('chkFollow').checked;
-        var commentEnabled = document.getElementById('chkComment').checked;
-        var scrollEnabled = document.getElementById('chkScroll').checked;
-
-        // 构建操作列表
-        var operations = [{ action: 'open_platform', params: {} }];
-
-        for (var i = 0; i < scrollCount; i++) {
-            if (scrollEnabled) {
-                operations.push({ action: 'scroll', params: { direction: 'up', count: 1, interval: interval } });
-            }
-            if (likeEnabled) {
-                operations.push({ action: 'like', params: {} });
-            }
-            if (followEnabled) {
-                operations.push({ action: 'follow', params: {} });
-            }
-            if (commentEnabled) {
-                var lines = document.getElementById('commentText').value.trim().split('\n');
-                var text = lines[Math.floor(Math.random() * lines.length)] || '支持';
-                operations.push({ action: 'comment', params: { text: text } });
-            }
-        }
-
-        addLog('开始执行任务 - ' + platform + ', ' + operations.length + ' 个操作', 'action');
-
-        document.getElementById('startTaskBtn').disabled = true;
-        var originalText = document.getElementById('startTaskBtn').textContent;
-        document.getElementById('startTaskBtn').textContent = '⏳ 执行中...';
-
-        fetch('/api/app-devices/' + encodeURIComponent(selectedDeviceId) + '/task', {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({
-                platform: platform,
-                operations: operations,
-                interval_between_operations: interval
-            })
-        })
-        .then(function(r) { return r.json(); })
-        .then(function(data) {
-            addLog('任务完成: ' + data.success_count + '/' + data.total_operations + ' 成功', 'success');
-            if (data.results && data.results.forEach) {
-                data.results.forEach(function(r) {
-                    if (r.success) {
-                        addLog('  ✅ ' + r.action + ' - ' + r.message, 'success');
-                    } else {
-                        addLog('  ❌ ' + r.action + ' - ' + r.message, 'error');
-                    }
-                });
-            }
-        })
-        .catch(function(err) {
-            addLog('任务执行错误: ' + err, 'error');
-        })
-        .finally(function() {
-            document.getElementById('startTaskBtn').disabled = false;
-            document.getElementById('startTaskBtn').textContent = originalText;
-        });
-    }
-
-    // 评论框显示
-    document.getElementById('chkComment').addEventListener('change', function() {
-        document.getElementById('commentBox').style.display = this.checked ? 'block' : 'none';
+// ===== 模板管理 =====
+function loadTemplates(){
+    apiFetch('/api/templates').then(function(r){return r.json();}).then(function(data){
+        var list=data.templates||[],container=document.getElementById('templateList');
+        if(list.length===0){container.innerHTML='<div class="empty-state">暂无模板</div>';return;}
+        var html='<table><tr><th>名称</th><th>模式</th><th>更新时间</th><th>操作</th></tr>';
+        list.forEach(function(t){
+            var ml=(t.config&&t.config.mode)==='nurture'?'🌱养号':'💼工作';
+            var ut=(t.updated_at||'').substring(0,16).replace('T',' ');
+            html+='<tr><td>'+t.name+'</td><td>'+ml+'</td><td style="color:#888">'+ut+'</td><td>';
+            html+='<button class="btn btn-default" style="padding:2px 8px;font-size:11px;" onclick="loadTemplateToForm(\''+t.id+'\')">载入</button> ';
+            html+='<button class="btn btn-default" style="padding:2px 8px;font-size:11px;color:#e53935;" onclick="deleteTemplate(\''+t.id+'\')">删除</button>';
+            html+='</td></tr>';
+        });html+='</table>';container.innerHTML=html;
     });
+}
+function showSaveTemplateModal(){
+    var name=prompt('模板名称:',currentMode==='nurture'?'养号-'+new Date().toLocaleDateString():'工作-'+new Date().toLocaleDateString());
+    if(!name)return;
+    var config=buildV3Config();
+    apiFetch('/api/templates',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({name:name,config:config,scope:'global'})})
+    .then(function(r){return r.json();}).then(function(data){addLog('✅ 已保存: '+data.name,'success');loadTemplates();})
+    .catch(function(err){addLog('保存失败: '+err,'error');});
+}
+function loadTemplateToForm(tid){
+    apiFetch('/api/templates/'+tid).then(function(r){return r.json();}).then(function(tpl){
+        if(tpl.config&&tpl.config.mode==='nurture'){
+            switchMode('nurture');var n=tpl.config.nurture;
+            if(n.searchKeywords)document.getElementById('nurtureKeywords').value=n.searchKeywords.join('\n');
+            if(n.durationRange){setVal('nurtureDurMin',n.durationRange.min);setVal('nurtureDurMax',n.durationRange.max);}
+            setVal('nurtureLikeRate',n.likeRate);
+        }else if(tpl.config&&tpl.config.mode==='work'){
+            switchMode('work');var w=tpl.config.work;
+            if(w.defaultProbabilities){setVal('probLike',w.defaultProbabilities.likeRate);setVal('probComment',w.defaultProbabilities.commentRate);}
+            if(w.mainLine&&w.mainLine.keywords)document.getElementById('mainKeywords').value=w.mainLine.keywords.join('\n');
+            if(w.mainLine&&w.mainLine.defaultReplies)document.getElementById('mainReplies').value=w.mainLine.defaultReplies.join('\n');
+            if(w.secondaryLine&&w.secondaryLine.keywords)document.getElementById('secKeywords').value=w.secondaryLine.keywords.join('\n');
+        }
+        addLog('📋 已载入: '+tpl.name,'info');
+        switchTab('tasks');
+    });
+}
+function deleteTemplate(tid){if(!confirm('确定删除？'))return;apiFetch('/api/templates/'+tid,{method:'DELETE'}).then(function(){addLog('🗑️ 已删除','info');loadTemplates();});}
 
-    // 初始化
-    document.getElementById('startTaskBtn').disabled = true;
-    addLog('页面已加载，等待设备连接...', 'info');
+// ===== 定时任务 =====
+var editingScheduleId=null;
+function loadSchedules(){
+    apiFetch('/api/schedules').then(function(r){return r.json();}).then(function(data){renderScheduleList(data.schedules||[]);});
+}
+function renderScheduleList(schedules){
+    var container=document.getElementById('scheduleList');
+    if(schedules.length===0){container.innerHTML='<div class="empty-state">暂无定时任务</div>';return;}
+    var TL={once:'一次性',daily:'每日循环',interval:'间隔执行'};
+    var html='';
+    schedules.forEach(function(job){
+        var nr=job.next_run?job.next_run.substring(0,16).replace('T',' '):'-';
+        html+='<div style="border:1px solid #e0e0e0;border-radius:8px;padding:12px;margin-bottom:8px;">';
+        html+='<div style="display:flex;justify-content:space-between;align-items:center;"><strong>'+job.name+'</strong>';
+        html+='<span><span class="status-badge'+(job.enabled?'':' gray')+'" style="margin-right:4px;">'+(job.enabled?'启用':'禁用')+'</span>';
+        html+='<span class="status-badge" style="background:#fff3e0;color:#e65100;">'+ (TL[job.schedule_type]||job.schedule_type)+'</span></span></div>';
+        html+='<div style="font-size:12px;color:#666;margin:6px 0;">下次: <b>'+nr+'</b> | 已执行: <b>'+job.execution_count+'</b> 次</div>';
+        html+='<div style="display:flex;gap:4px;">';
+        html+='<button class="btn btn-default" style="padding:2px 8px;font-size:11px;" onclick="editSchedule(\''+job.id+'\')">编辑</button> ';
+        html+='<button class="btn btn-default" style="padding:2px 8px;font-size:11px;" onclick="toggleSchedule(\''+job.id+'\','+!job.enabled+')">'+(job.enabled?'暂停':'启用')+'</button> ';
+        html+='<button class="btn btn-default" style="padding:2px 8px;font-size:11px;" onclick="triggerSchedule(\''+job.id+'\')">立即执行</button> ';
+        html+='<button class="btn btn-default" style="padding:2px 8px;font-size:11px;color:#e53935;" onclick="deleteSchedule(\''+job.id+'\')">删除</button>';
+        html+='</div></div>';
+    });container.innerHTML=html;
+}
+function showScheduleEditor(sid){
+    editingScheduleId=sid||null;
+    var title=sid?'编辑定时任务':'新建定时任务';
+    var modal=document.createElement('div');modal.id='scheduleModal';
+    modal.style.cssText='position:fixed;top:0;left:0;right:0;bottom:0;background:rgba(0,0,0,0.5);z-index:9999;display:flex;align-items:flex-start;justify-content:center;overflow-y:auto;padding:20px;';
+    modal.innerHTML='<div style="background:white;border-radius:12px;padding:20px;width:600px;max-width:95%;">'
+        +'<h3>⏰ '+title+'</h3>'
+        +'<div class="form-group"><label>任务名称</label><input id="schName" value="'+(sid?'':'定时任务')+'" placeholder="如: 每日养号"></div>'
+        +'<div class="form-group"><label>调度类型</label><select id="schType" onchange="onSchTypeChange()"><option value="once">一次性</option><option value="daily">每日循环</option><option value="interval">间隔执行</option></select></div>'
+        +'<div id="schOncePanel" class="form-group"><label>执行时间</label><input id="schStartTime" type="datetime-local"></div>'
+        +'<div id="schDailyPanel" class="form-group" style="display:none;"><label>执行时间点(HH:MM,每行一个)</label><textarea id="schDailyTimes">09:00\n14:00\n20:00</textarea></div>'
+        +'<div id="schIntervalPanel" class="form-group" style="display:none;"><label>间隔时间范围(分钟)</label><div style="display:flex;gap:8px;"><input id="schIntervalMin" type="number" value="30" min="1" style="flex:1;" placeholder="最小间隔"><input id="schIntervalMax" type="number" value="60" min="1" style="flex:1;" placeholder="最大间隔"></div></div>'
+        +'<div class="input-row"><div class="form-group"><label>最大次数(0=无限)</label><input id="schMaxExec" type="number" value="0"></div>'
+        +'<div class="form-group"><label>初始状态</label><select id="schEnabled"><option value="true">启用</option><option value="false">禁用</option></select></div></div>'
+        +'<hr style="margin:14px 0;"><h4>📌 设备-任务分配</h4>'
+        +'<div id="assignmentList" style="margin-bottom:8px;"></div>'
+        +'<button class="btn btn-default" style="font-size:12px;" onclick="addAssignmentRow()">+ 添加</button>'
+        +'<hr style="margin:14px 0;"><div class="btn-row">'
+        +'<button class="btn btn-primary" onclick="saveScheduleFromModal()" style="background:#7c3aed;">💾 保存</button>'
+        +'<button class="btn btn-default" onclick="closeScheduleModal()">取消</button></div></div>';
+    document.body.appendChild(modal);
+    onSchTypeChange();
+    loadTemplatesForSchedule().then(function(){
+        console.log('Templates loaded, editing schedule:', sid);
+        if(sid){
+            console.log('Fetching schedule:', '/api/schedules/'+sid);
+            apiFetch('/api/schedules/'+sid)
+                .then(function(r){ 
+                    console.log('API response status:', r.status);
+                    if (!r.ok) {
+                        throw new Error('HTTP error: ' + r.status);
+                    }
+                    return r.json();
+                })
+                .then(function(job){
+                    console.log('Schedule data loaded:', job);
+                    document.getElementById('schName').value = job.name || '';
+                    document.getElementById('schType').value = job.schedule_type || 'once';
+                    onSchTypeChange();
+                    if(job.start_time) document.getElementById('schStartTime').value = job.start_time.substring(0,16);
+                    if(job.daily_times && job.daily_times.length>0) document.getElementById('schDailyTimes').value = job.daily_times.join('\n');
+                    if(job.interval_min_minutes!==undefined) document.getElementById('schIntervalMin').value = job.interval_min_minutes;
+                    else if(job.interval_minutes) document.getElementById('schIntervalMin').value = job.interval_minutes;
+                    if(job.interval_max_minutes!==undefined) document.getElementById('schIntervalMax').value = job.interval_max_minutes;
+                    else if(job.interval_minutes) document.getElementById('schIntervalMax').value = job.interval_minutes;
+                    document.getElementById('schMaxExec').value = job.max_executions || 0;
+                    document.getElementById('schEnabled').value = String(job.enabled !== false);
+                    
+                    // 加载已有的设备-任务分配
+                    var assignments = job.assignments || [];
+                    if(assignments.length > 0){
+                        assignments.forEach(function(a){ addAssignmentRow(a); });
+                    }else{
+                        addAssignmentRow();
+                    }
+                })
+                .catch(function(err){
+                    console.error('Failed to load schedule:', err);
+                    addLog('加载定时任务失败: ' + err.message, 'error');
+                });
+            }else{
+                addAssignmentRow();
+            }
+        });
+}
+function onSchTypeChange(){
+    var t=document.getElementById('schType').value;
+    document.getElementById('schOncePanel').style.display=t==='once'?'':'none';
+    document.getElementById('schDailyPanel').style.display=t==='daily'?'':'none';
+    document.getElementById('schIntervalPanel').style.display=t==='interval'?'':'none';
+}
+var assignmentRowCount=0;
+var templateList=[];
+var templatesLoaded=false;
+function loadTemplatesForSchedule(){
+    return new Promise(function(resolve){
+        if(templatesLoaded){resolve(templateList);return;}
+        apiFetch('/api/templates').then(function(r){return r.json();}).then(function(data){
+            templateList=data.templates||[];
+            templatesLoaded=true;
+            resolve(templateList);
+        }).catch(function(){resolve([]);});
+    });
+}
+function addAssignmentRow(preData){
+    preData=preData||{};assignmentRowCount++;
+    var row=document.createElement('div');row.id='assignRow_'+assignmentRowCount;
+    row.style.cssText='background:#fafbfc;border:1px solid #e8e8e8;border-radius:6px;padding:10px;margin-bottom:8px;';
+    row.innerHTML='<div style="display:flex;align-items:center;gap:8px;margin-bottom:6px;"><strong>#'+assignmentRowCount+'</strong>'
+        +'<select class="assign-device-select" style="flex:1;padding:6px;border:1px solid #d0d0d0;border-radius:4px;font-size:12px;"><option value="">-- 选择设备 --</option></select>'
+        +'<select class="assign-template-select" style="flex:1;padding:6px;border:1px solid #d0d0d0;border-radius:4px;font-size:12px;"><option value="">-- 选择模板 --</option></select>'
+        +'<button class="btn btn-default" style="padding:2px 8px;font-size:11px;color:#e53935;" onclick="document.getElementById(\'assignRow_'+assignmentRowCount+'\').remove()">删除</button></div>'
+        +'<div style="display:flex;gap:8px;"><div style="flex:1;"><label style="font-size:11px;color:#888;">休息前最小(s)</label><input class="assign-rest-before-min" type="number" value="'+(preData.rest_before_min||5)+'" min="0" max="300" style="width:100%;padding:4px;border:1px solid #d0d0d0;border-radius:4px;font-size:12px;"></div>'
+        +'<div style="flex:1;"><label style="font-size:11px;color:#888;">休息前最大(s)</label><input class="assign-rest-before-max" type="number" value="'+(preData.rest_before_max||15)+'" min="0" max="600" style="width:100%;padding:4px;border:1px solid #d0d0d0;border-radius:4px;font-size:12px;"></div></div>';
+    document.getElementById('assignmentList').appendChild(row);
+    deviceList.forEach(function(d){var o=document.createElement('option');o.value=d.device_id;o.textContent=d.device_name||d.device_id.substr(0,8);row.querySelector('.assign-device-select').appendChild(o);});
+    templateList.forEach(function(t){var o=document.createElement('option');o.value=t.id;o.textContent=t.name;row.querySelector('.assign-template-select').appendChild(o);});
+    if(preData.device_id)row.querySelector('.assign-device-select').value=preData.device_id;
+    if(preData.template_id)row.querySelector('.assign-template-select').value=preData.template_id;
+}
+function collectAssignments(){
+    var rows=document.querySelectorAll('[id^="assignRow_"]'),as=[];
+    rows.forEach(function(row){
+        var did=row.querySelector('.assign-device-select').value,tid=row.querySelector('.assign-template-select').value;
+        if(did&&tid)as.push({device_id:did,template_id:tid,rest_before_min:parseInt(row.querySelector('.assign-rest-before-min').value)||5,rest_before_max:parseInt(row.querySelector('.assign-rest-before-max').value)||15,interval_after_min:0,interval_after_max:0});
+    });return as;
+}
+function saveScheduleFromModal(){
+    var name=document.getElementById('schName').value.trim();
+    if(!name){alert('请输入名称');return;}
+    var st=document.getElementById('schType').value,body={id:editingScheduleId,name:name,enabled:document.getElementById('schEnabled').value==='true',schedule_type:st,max_executions:getInt('schMaxExec',0),assignments:collectAssignments()};
+    if(st==='once'){var s=document.getElementById('schStartTime').value;if(!s){alert('选择时间');return;}body.start_time=s+':00';}
+    else if(st==='daily'){var ts=getLines('schDailyTimes');if(ts.length===0){alert('输入时间点');return;}body.daily_times=ts;}
+    else if(st==='interval'){
+                var minInt=getInt('schIntervalMin',30),maxInt=getInt('schIntervalMax',60);
+                body.interval_min_minutes=Math.min(minInt,maxInt);
+                body.interval_max_minutes=Math.max(minInt,maxInt);
+            }
+    apiFetch('/api/schedules',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(body)})
+    .then(function(r){return r.json();}).then(function(data){addLog('⏰ 已保存: '+data.name,'success');closeScheduleModal();loadSchedules();})
+    .catch(function(err){addLog('保存失败: '+err,'error');});
+}
+function closeScheduleModal(){var el=document.getElementById('scheduleModal');if(el)el.remove();editingScheduleId=null;assignmentRowCount=0;}
+function editSchedule(id){showScheduleEditor(id);}
+function toggleSchedule(id,en){apiFetch('/api/schedules/'+id+'/toggle',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({enabled:en})}).then(function(){loadSchedules();addLog((en?'启用':'暂停')+'了定时任务','info');});}
+function triggerSchedule(id){
+    console.log('Triggering schedule:', id);
+    apiFetch('/api/schedules/'+id+'/trigger',{method:'POST'})
+        .then(function(r){ 
+            console.log('Trigger API response:', r.status);
+            return r.json();
+        })
+        .then(function(data){
+            console.log('Trigger result:', data);
+            if(data.success){
+                addLog('⏰ 已触发执行','success');
+                loadSchedules();
+            }else{
+                addLog('触发失败: '+(data.message||''),'error');
+            }
+        })
+        .catch(function(err){
+            console.error('Trigger error:', err);
+            addLog('触发请求失败: '+err.message,'error');
+        });
+}
+function deleteSchedule(id){if(!confirm('确定删除？'))return;apiFetch('/api/schedules/'+id,{method:'DELETE'}).then(function(){addLog('🗑️ 已删除','info');loadSchedules();});}
+
+// ===== 初始化 =====
+console.log('=== AutoBot v3 JS 初始化 ===');
+try {
+    addLog('页面已加载，等待设备连接...','info');
     connectFrontendWS();
     loadDevices();
-    setInterval(loadDevices, 15000);  // 每 15 秒轮询一次作为备份
+    setInterval(loadDevices, 15000);
+    console.log('=== AutoBot v3 JS 初始化完成 ===');
+} catch(e) {
+    console.error('初始化错误:', e);
+    alert('JS 初始化失败: ' + e.message);
+}
 </script>
 </body>
 </html>

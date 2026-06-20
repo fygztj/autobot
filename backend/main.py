@@ -13,6 +13,7 @@ from loguru import logger
 
 from backend.config import config
 from backend.api.routes import app
+from backend.task_manager import scheduler
 
 
 def setup_logging():
@@ -43,6 +44,30 @@ def initialize():
     logger.info(f"Web 管理面板: http://localhost:{config.WEB_PORT}")
     logger.info(f"WebSocket 端点: ws://localhost:{config.WEB_PORT}/ws/app/connect")
     logger.info("AutoBot 启动完成！")
+
+
+# 启动/关闭时自动管理调度器
+@app.on_event("startup")
+async def on_startup():
+    # 设置调度器的命令发送回调（复用 app_device_manager）
+    from backend.app_client import app_device_manager
+
+    async def _send_command(device_id: str, action: str, platform: str, params: dict):
+        return await app_device_manager.send_command(
+            device_id=device_id,
+            action=action,
+            platform=platform,
+            params=params,
+            timeout=300,  # 定时任务给更长的超时
+        )
+
+    scheduler.command_sender = _send_command
+    await scheduler.start()
+
+
+@app.on_event("shutdown")
+async def on_shutdown():
+    await scheduler.stop()
 
 
 def main():

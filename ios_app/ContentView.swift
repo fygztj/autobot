@@ -262,6 +262,14 @@ struct SettingsView: View {
                     .textInputAutocapitalization(.never)
                     .autocorrectionDisabled(true)
                     .keyboardType(.URL)
+
+                SecureField("连接 Token（公网部署时必填，局域网可留空）",
+                           text: Binding(
+                            get: { appState.authToken },
+                            set: { newValue in appState.authToken = newValue }
+                           ))
+                    .textInputAutocapitalization(.never)
+                    .autocorrectionDisabled(true)
             }
 
             Section(header: Text("连接操作")) {
@@ -290,13 +298,15 @@ struct SettingsView: View {
 
             Section(header: Text("使用说明")) {
                 VStack(alignment: .leading, spacing: 8) {
-                    Text("1. 确保 iPhone 和 Mac 在同一个 WiFi 网络")
+                    Text("1. 局域网: 确保 iPhone 和 Mac 在同一 WiFi，Token 可留空")
                         .font(.system(size: 13))
-                    Text("2. PC 端发送 open_platform 后，App 会自动在浏览器中打开小红书/抖音网页版")
+                    Text("2. 公网部署: 需填写 Token（与 PC 端一致），服务器地址填 Cloudflare Tunnel 地址")
                         .font(.system(size: 13))
-                    Text("3. 请先在浏览器 Tab 中手动登录你的账号（仅需一次）")
+                    Text("3. PC 端发送 open_platform 后，App 会自动在浏览器中打开小红书/抖音网页版")
                         .font(.system(size: 13))
-                    Text("4. 登录后，PC 端即可控制自动点赞/评论/关注等")
+                    Text("4. 请先在浏览器 Tab 中手动登录你的账号（仅需一次）")
+                        .font(.system(size: 13))
+                    Text("5. 登录后，PC 端即可控制自动点赞/评论/关注等")
                         .font(.system(size: 13))
                     Text("5. 如果点赞失败，请检查是否已登录、页面是否已加载完成")
                         .font(.system(size: 13))
