@@ -259,12 +259,58 @@ enum AutomationScripts {
         let delta = (direction == "up") ? "400" : "-400"
         return """
         (function(){try{
-            var startY=window.pageYOffset||document.documentElement.scrollTop;
+            var startY=window.pageYOffset||document.documentElement.scrollTop||0;
             var targetY=startY+\(delta);
-            var t0=null;
-            function step(ts){if(!t0)t0=ts;var p=Math.min((ts-t0)/500,1);var e=1-Math.pow(1-p,3);window.scrollTo(0,startY+(targetY-startY)*e);if(p<1)requestAnimationFrame(step);}
-            requestAnimationFrame(step);
-            return JSON.stringify({success:true, message:'平滑滚动 '+\(delta)+'px'});
+            var scrolled=false;
+            var scrollEl=null;
+
+            var candidates=[document.scrollingElement,document.documentElement,document.body];
+            var allDivs=document.querySelectorAll('div');
+            for(var i=0;i<allDivs.length;i++){
+                var d=allDivs[i];
+                var cs=window.getComputedStyle(d);
+                if(cs.overflowY==='auto' || cs.overflowY==='scroll' || cs.overflow==='auto' || cs.overflow==='scroll'){
+                    candidates.push(d);
+                }
+            }
+
+            for(var j=0;j<candidates.length;j++){
+                var el=candidates[j];
+                if(!el)continue;
+                try{
+                    var height=el.scrollHeight||0;
+                    var clientHeight=el.clientHeight||0;
+                    if(height>clientHeight+100){
+                        scrollEl=el;
+                        break;
+                    }
+                }catch(e){}
+            }
+
+            if(!scrollEl){
+                scrollEl=document.scrollingElement||document.documentElement||document.body;
+            }
+
+            try{
+                scrollEl.scrollBy({top: \(delta), behavior: 'smooth'});
+                scrolled=true;
+            }catch(e){}
+
+            if(!scrolled){
+                var t0=null;
+                function step(ts){if(!t0)t0=ts;var p=Math.min((ts-t0)/500,1);var e=1-Math.pow(1-p,3);window.scrollTo(0,startY+(targetY-startY)*e);if(p<1)requestAnimationFrame(step);}
+                requestAnimationFrame(step);
+            }
+
+            setTimeout(function(){
+                var endY=window.pageYOffset||document.documentElement.scrollTop||0;
+                var diff=endY-startY;
+                if(Math.abs(diff)<50){
+                    try{scrollEl.scrollTo({top: startY+\(delta), behavior: 'smooth'});}catch(e){}
+                }
+            },600);
+
+            return JSON.stringify({success:true,message:'平滑滚动 '+\(delta)+'px',startY:startY,targetY:targetY,scrollEl:scrollEl?scrollEl.tagName:'null'});
         }catch(e){return JSON.stringify({success:false,message:e.message});}})();
         """
     }
@@ -476,19 +522,18 @@ enum AutomationScripts {
     static func clickRandomNoteScript(for platform: String) -> String {
         return """
         (function(){try{
-            var sel = 'a[href*="/note/"], a[href*="/explore/"], section[class*="note"], div[class*="note-card"], div[class*="feeds-item"], article';
+            var sel = 'a[href*="/note/"], a[href*="/explore/"], a[href*="/search_result/"], section[class*="note"], div[class*="note-card"], div[class*="feeds-item"], div[class*="search-item"], article, div[class*="card"]';
             var items = document.querySelectorAll(sel);
             var candidates = [];
 
             for (var i = 0; i < items.length; i++) {
                 var r = items[i].getBoundingClientRect();
-                if (r.width > 100 && r.height > 100 && r.top > 20 && r.top < window.innerHeight * 0.8 && r.bottom > 20) {
+                if (r.width > 80 && r.height > 80 && r.top > 20 && r.top < window.innerHeight * 0.9 && r.bottom > 20) {
                     candidates.push(items[i]);
                 }
             }
 
             if (candidates.length === 0) {
-                // 兜底
                 var links = document.querySelectorAll('a[href]');
                 for (var j = 0; j < links.length; j++) {
                     var lr = links[j].getBoundingClientRect();
@@ -736,17 +781,291 @@ enum AutomationScripts {
         """
     }
 
-    /// 搜索关键词
-    static func searchScript(keyword: String) -> String {
+    /// 搜索关键词 - 分步骤模拟真实用户操作
+    static func findSearchEntryScript() -> String {
+        return """
+        (function(){try{
+            var allElements = document.querySelectorAll('a, button, div, span, svg, img');
+            var candidates = [];
+            var viewH = window.innerHeight;
+            
+            for (var i = 0; i < allElements.length; i++) {
+                var el = allElements[i];
+                var r = el.getBoundingClientRect();
+                
+                if (r.width < 20 || r.height < 20 || r.width > 400) continue;
+                if (r.top < 0 || r.top > viewH * 0.3) continue;
+                if (r.left < 0 || r.left > window.innerWidth - 50) continue;
+                
+                var text = (el.innerText || el.textContent || '').trim();
+                var cls = (el.className || '').toString();
+                var ariaLabel = el.getAttribute('aria-label') || '';
+                var placeholder = el.getAttribute('placeholder') || '';
+                var tag = el.tagName;
+                
+                var score = 0;
+                
+                if (placeholder.indexOf('搜索') >= 0) score += 100;
+                if (ariaLabel.indexOf('搜索') >= 0) score += 80;
+                if (text === '搜索' || text === 'Search') score += 70;
+                if (cls.toLowerCase().indexOf('search') >= 0) score += 60;
+                if (cls.indexOf('Search') >= 0) score += 50;
+                if (cls.toLowerCase().indexOf('input') >= 0 && r.width > 100 && r.width < 400) score += 40;
+                if (tag === 'INPUT' && (r.width > 150 || placeholder.length > 0)) score += 30;
+                if (r.top < 80 && r.width > 100) score += 20;
+                if (cls.indexOf('icon') >= 0 && r.width < 50 && r.height < 50 && r.top < 100) score += 10;
+                
+                if (score > 0) {
+                    candidates.push({
+                        el: el,
+                        score: score,
+                        tag: tag,
+                        text: text.substring(0, 30),
+                        cls: cls.substring(0, 60),
+                        placeholder: placeholder.substring(0, 30),
+                        ariaLabel: ariaLabel,
+                        x: Math.round(r.left + r.width / 2),
+                        y: Math.round(r.top + r.height / 2),
+                        w: Math.round(r.width),
+                        h: Math.round(r.height)
+                    });
+                }
+            }
+            
+            candidates.sort(function(a,b){return b.score - a.score;});
+            var top = candidates.slice(0, 5);
+            
+            return JSON.stringify({
+                success: top.length > 0,
+                found: top.length > 0,
+                candidates: top,
+                count: candidates.length
+            });
+        }catch(e){return JSON.stringify({success:false, error:e.message, candidates:[], found:false});}})();
+        """
+    }
+    
+    static func clickSearchEntryScript() -> String {
+        return """
+        (function(){try{
+            var allElements = document.querySelectorAll('a, button, div, span, svg, img, input');
+            var candidates = [];
+            var viewH = window.innerHeight;
+            
+            for (var i = 0; i < allElements.length; i++) {
+                var el = allElements[i];
+                var r = el.getBoundingClientRect();
+                
+                if (r.width < 20 || r.height < 20 || r.width > 500) continue;
+                if (r.top < -20 || r.top > viewH * 0.5) continue;
+                
+                var text = (el.innerText || el.textContent || '').trim();
+                var cls = (el.className || '').toString();
+                var ariaLabel = el.getAttribute('aria-label') || '';
+                var placeholder = el.getAttribute('placeholder') || '';
+                var tag = el.tagName;
+                
+                var score = 0;
+                if (placeholder.indexOf('搜索') >= 0) score += 100;
+                if (placeholder.indexOf('Search') >= 0) score += 90;
+                if (ariaLabel.indexOf('搜索') >= 0) score += 80;
+                if (text === '搜索') score += 70;
+                if (cls.indexOf('search-input') >= 0) score += 85;
+                if (cls.toLowerCase().indexOf('search') >= 0) score += 60;
+                if (cls.indexOf('Search') >= 0) score += 50;
+                if (tag === 'INPUT' && (r.width > 100 || placeholder.length > 0)) score += 40;
+                if (r.top < 100 && r.width > 100) score += 20;
+                
+                if (score > 0) candidates.push({el:el, score:score, tag:tag, cls:cls});
+            }
+            
+            candidates.sort(function(a,b){return b.score - a.score;});
+            
+            if (candidates.length === 0) {
+                return JSON.stringify({success:false, message:'未找到搜索入口'});
+            }
+            
+            var best = candidates[0].el;
+            
+            if (best.tagName !== 'INPUT' && best.querySelector) {
+                var innerInput = best.querySelector('input, [contenteditable]');
+                if (innerInput) {
+                    var ir = innerInput.getBoundingClientRect();
+                    if (ir.width > 10) {
+                        best = innerInput;
+                    }
+                }
+            }
+            
+            best.scrollIntoView({block:'center', behavior:'instant'});
+            void best.offsetHeight;
+            
+            var rect = best.getBoundingClientRect();
+            var cx = Math.round(rect.left + rect.width/2);
+            var cy = Math.round(rect.top + rect.height/2);
+            
+            function fire(t,x,y,target){
+                var evt = new MouseEvent(t, {
+                    bubbles:true, cancelable:true, view:window,
+                    clientX:x, clientY:y, screenX:x, screenY:y,
+                    button:0, buttons:t==='mouseup'?0:1
+                });
+                target.dispatchEvent(evt);
+                document.dispatchEvent(new MouseEvent(t, {
+                    bubbles:true, cancelable:true, view:window,
+                    clientX:x, clientY:y, screenX:x, screenY:y,
+                    button:0, buttons:t==='mouseup'?0:1, target:target
+                }));
+            }
+            
+            fire('mousedown', cx, cy, best);
+            setTimeout(function(){
+                fire('mouseup', cx, cy, best);
+            }, 50);
+            setTimeout(function(){
+                fire('click', cx, cy, best);
+            }, 100);
+            
+            if (typeof best.focus === 'function') {
+                try { best.focus(); } catch(e) {}
+            }
+            
+            return JSON.stringify({
+                success:true, 
+                message:'已点击搜索入口',
+                clickedTag: best.tagName,
+                clickedClass: (best.className||'').toString().substring(0,80),
+                x: cx,
+                y: cy,
+                w: Math.round(rect.width),
+                h: Math.round(rect.height)
+            });
+        }catch(e){return JSON.stringify({success:false, message:'点击失败:'+e.message});}})();
+        """
+    }
+    
+    static func inputSearchKeywordScript(keyword: String) -> String {
         let escaped = keyword.replacingOccurrences(of: "\\", with: "\\\\").replacingOccurrences(of: "'", with: "\\'").replacingOccurrences(of: "\"", with: "\\\"")
         return """
         (function(){try{
             var kw='\(escaped)';
-            // 小红书搜索 URL（包含笔记和视频）
-            var searchUrl='https://www.xiaohongshu.com/search_result?keyword='+encodeURIComponent(kw);
-            window.location.href=searchUrl;
-            return JSON.stringify({success:true, message:'正在搜索: '+kw});
-        }catch(e){return JSON.stringify({success:false, message:'搜索失败:'+e.message});}})();
+            
+            var allInputs = document.querySelectorAll('input:not([type="hidden"]):not([type="submit"]):not([type="button"]), textarea, [contenteditable="true"]');
+            var candidates = [];
+            
+            for (var i = 0; i < allInputs.length; i++) {
+                var el = allInputs[i];
+                var r = el.getBoundingClientRect();
+                var placeholder = el.placeholder || el.getAttribute('placeholder') || '';
+                var ariaLabel = el.getAttribute('aria-label') || '';
+                var type = el.type || '';
+                var tag = el.tagName;
+                var cls = (el.className || '').toString();
+                var parentCls = el.parentElement ? (el.parentElement.className || '').toString() : '';
+                
+                if (r.width < 30 || r.height < 15) continue;
+                
+                var score = 0;
+                if (placeholder.indexOf('搜索') >= 0) score += 100;
+                if (placeholder.indexOf('Search') >= 0) score += 90;
+                if (ariaLabel.indexOf('搜索') >= 0) score += 80;
+                if (type === 'search') score += 70;
+                if (tag === 'INPUT' && cls.toLowerCase().indexOf('search') >= 0) score += 60;
+                if (parentCls.toLowerCase().indexOf('search') >= 0) score += 50;
+                if (r.top < window.innerHeight * 0.4 && tag === 'INPUT' && r.width > 80) score += 30;
+                if (r.top < 150 && r.width > 100) score += 20;
+                
+                candidates.push({
+                    el: el,
+                    score: score,
+                    tag: tag,
+                    type: type,
+                    placeholder: placeholder.substring(0, 30),
+                    cls: cls.substring(0, 60),
+                    parentCls: parentCls.substring(0, 60),
+                    top: Math.round(r.top),
+                    left: Math.round(r.left),
+                    w: Math.round(r.width),
+                    h: Math.round(r.height)
+                });
+            }
+            
+            candidates.sort(function(a,b){return b.score - a.score;});
+            
+            var searchInput = null;
+            var debugInfo = [];
+            for (var c = 0; c < candidates.length && c < 8; c++) {
+                var cand = candidates[c];
+                debugInfo.push({
+                    tag: cand.tag,
+                    type: cand.type,
+                    placeholder: cand.placeholder,
+                    cls: cand.cls,
+                    score: cand.score,
+                    top: cand.top,
+                    w: cand.w
+                });
+                if (cand.score > 0 && !searchInput) {
+                    searchInput = cand.el;
+                }
+            }
+            
+            if (!searchInput && candidates.length > 0) {
+                for (var d = 0; d < candidates.length; d++) {
+                    if (candidates[d].tag === 'INPUT' && candidates[d].w > 100) {
+                        searchInput = candidates[d].el;
+                        break;
+                    }
+                }
+            }
+            
+            if (!searchInput && candidates.length > 0) {
+                searchInput = candidates[0].el;
+            }
+            
+            if (!searchInput) {
+                return JSON.stringify({success:false, message:'页面上没有任何输入框', debug: debugInfo});
+            }
+            
+            searchInput.scrollIntoView({block:'center', behavior:'instant'});
+            void searchInput.offsetHeight;
+            searchInput.focus();
+            
+            if (searchInput.tagName === 'INPUT' || searchInput.tagName === 'TEXTAREA') {
+                var nativeInputValueSetter = Object.getOwnPropertyDescriptor(window.HTMLInputElement.prototype, 'value');
+                if (searchInput.tagName === 'TEXTAREA') {
+                    nativeInputValueSetter = Object.getOwnPropertyDescriptor(window.HTMLTextAreaElement.prototype, 'value');
+                }
+                
+                if (nativeInputValueSetter && nativeInputValueSetter.set) {
+                    nativeInputValueSetter.set.call(searchInput, kw);
+                } else {
+                    searchInput.value = kw;
+                }
+            } else {
+                searchInput.textContent = kw;
+                searchInput.innerText = kw;
+            }
+            
+            searchInput.dispatchEvent(new Event('input', {bubbles:true}));
+            searchInput.dispatchEvent(new Event('change', {bubbles:true}));
+            
+            setTimeout(function(){
+                var enterKeyCode = 13;
+                searchInput.dispatchEvent(new KeyboardEvent('keydown', {key:'Enter', keyCode:enterKeyCode, which:enterKeyCode, bubbles:true, cancelable:true}));
+                searchInput.dispatchEvent(new KeyboardEvent('keypress', {key:'Enter', keyCode:enterKeyCode, which:enterKeyCode, bubbles:true, cancelable:true}));
+                searchInput.dispatchEvent(new KeyboardEvent('keyup', {key:'Enter', keyCode:enterKeyCode, which:enterKeyCode, bubbles:true, cancelable:true}));
+            }, 300);
+            
+            return JSON.stringify({
+                success:true, 
+                message:'已输入关键词: ' + kw,
+                inputTag: searchInput.tagName,
+                inputClass: (searchInput.className||'').toString().substring(0,60),
+                inputPlaceholder: searchInput.placeholder || '',
+                debug: debugInfo
+            });
+        }catch(e){return JSON.stringify({success:false, message:'输入失败:'+e.message});}})();
         """
     }
 

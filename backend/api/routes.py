@@ -80,6 +80,10 @@ async def send_schedule_event(message: str):
         "message": message
     })
 
+async def send_frontend_broadcast(message: dict):
+    """向前端发送任意广播消息"""
+    await frontend_ws.broadcast(message)
+
 
 # ================ 请求模型 ================
 class AppCommandRequest(BaseModel):

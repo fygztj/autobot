@@ -55,6 +55,16 @@ class AppDeviceManager:
                                 Exception("Device disconnected")
                             )
 
+        # 重置与该设备相关的正在执行的任务（延迟导入避免循环依赖）
+        try:
+            from backend.task_manager import scheduler
+            if scheduler:
+                reset_count = await scheduler.reset_tasks_for_device(device_id)
+                if reset_count > 0:
+                    logger.info(f"[AppDevice] 已重置 {reset_count} 个任务状态")
+        except Exception as e:
+            logger.warning(f"[AppDevice] 重置任务状态失败: {e}")
+
     # ========== 指令下发 ==========
 
     async def send_command(

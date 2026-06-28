@@ -73,6 +73,32 @@
         th { text-align: left; padding: 8px 10px; background: #f8f9fa; font-weight: 600; color: #555; border-bottom: 2px solid #eee; }
         td { padding: 8px 10px; border-bottom: 1px solid #f0f0f0; }
         tr:hover td { background: #fafbff; }
+        .status-dot { width: 8px; height: 8px; border-radius: 50%; display: inline-block; margin-right: 6px; }
+        .status-dot.running { background: #f59e0b; animation: pulse 1.5s infinite; }
+        .status-dot.waiting { background: #3b82f6; animation: pulse 2s infinite; }
+        .status-dot.idle { background: #22c55e; }
+        .status-dot.error { background: #ef4444; }
+        .status-dot.completed { background: #8b5cf6; }
+        @keyframes pulse { 0% { opacity: 1; } 50% { opacity: 0.4; } 100% { opacity: 1; } }
+        .status-card { border: 1px solid #e0e0e0; border-radius: 10px; padding: 16px; margin-bottom: 12px; background: white; }
+        .status-card.running { border-left: 4px solid #f59e0b; }
+        .status-card.waiting { border-left: 4px solid #3b82f6; }
+        .status-card.idle { border-left: 4px solid #22c55e; }
+        .status-card.error { border-left: 4px solid #ef4444; }
+        .status-header { display: flex; justify-content: space-between; align-items: center; margin-bottom: 8px; }
+        .status-title { font-weight: 600; font-size: 14px; }
+        .status-time { font-size: 11px; color: #888; }
+        .status-detail { font-size: 12px; color: #666; margin-top: 4px; line-height: 1.5; }
+        .status-progress { height: 6px; background: #e5e7eb; border-radius: 3px; overflow: hidden; margin-top: 10px; }
+        .status-progress-bar { height: 100%; background: linear-gradient(90deg, #f59e0b, #fbbf24); border-radius: 3px; transition: width 0.3s; }
+        .activity-list { max-height: 300px; overflow-y: auto; }
+        .activity-item { padding: 6px 0; border-bottom: 1px dashed #f0f0f0; font-size: 12px; display: flex; align-items: flex-start; gap: 8px; }
+        .activity-time { color: #aaa; font-size: 11px; white-space: nowrap; }
+        .activity-content { flex: 1; }
+        .activity-running { color: #f59e0b; }
+        .activity-success { color: #22c55e; }
+        .activity-error { color: #ef4444; }
+        .activity-info { color: #666; }
         @media (max-width: 768px) { .page-container { padding: 12px; } .input-row { flex-direction: column; } }
     </style>
 </head>
@@ -91,6 +117,7 @@
     <div class="tab-btn" data-page="tasks" onclick="console.log('click tasks');switchTab('tasks')">🚀 任务配置</div>
     <div class="tab-btn" data-page="templates" onclick="console.log('click templates');switchTab('templates')">📋 模板管理</div>
     <div class="tab-btn" data-page="schedule" onclick="console.log('click schedule');switchTab('schedule')">⏰ 定时任务</div>
+    <div class="tab-btn" data-page="status" onclick="console.log('click status');switchTab('status')">🔄 实时状态</div>
     <div class="tab-btn" data-page="logs" onclick="console.log('click logs');switchTab('logs')">📜 执行日志</div>
 </nav>
 
@@ -117,11 +144,20 @@
         </select>
         <div class="quick-actions">
             <button class="btn btn-default" onclick="sendSingleAction('open_platform')">打开平台</button>
-            <button class="btn btn-default" onclick="sendSingleAction('scroll')">滚动</button>
+            <button class="btn btn-default" onclick="sendScrollAction()">向下滚动</button>
             <button class="btn btn-default" onclick="sendSingleAction('like')">点赞</button>
             <button class="btn btn-default" onclick="sendSingleAction('click_random_note')">随机笔记</button>
             <button class="btn btn-default" onclick="sendSingleAction('collect')">收藏</button>
             <button class="btn btn-default" onclick="sendSingleAction('go_back')">返回</button>
+            <button class="btn btn-info" onclick="sendSingleAction('page_info')">页面信息</button>
+        </div>
+        <div style="margin-top:12px;padding-top:12px;border-top:1px dashed #ddd;">
+            <div style="display:flex;gap:8px;align-items:center;margin-bottom:8px;">
+                <label style="font-size:12px;color:#888;margin:0;white-space:nowrap;">🔍 搜索关键词:</label>
+                <input type="text" id="searchKeyword" placeholder="输入关键词搜索" style="flex:1;padding:6px 10px;font-size:12px;border-radius:6px;border:1.5px solid #ddd;">
+                <button class="btn btn-primary" style="padding:6px 14px;font-size:12px;background:#7c3aed;" onclick="sendSearchAction()">搜索</button>
+            </div>
+            <p class="hint" style="font-size:11px;color:#aaa;">💡 先打开平台，再输入关键词进行搜索</p>
         </div>
         <p class="hint" id="hint" style="margin-top:10px;">💡 先点击设备卡片选中设备</p>
     </div>
@@ -221,6 +257,23 @@
     </div>
 </div>
 
+<!-- 实时状态页 -->
+<div class="page" id="page-status">
+    <div class="panel">
+        <div class="panel-header">
+            <h2>🔄 实时状态监控</h2>
+            <span class="status-badge" id="statusUpdateTime">上次更新: -</span>
+        </div>
+        <div id="statusContainer">
+            <div class="empty-state">加载中...</div>
+        </div>
+    </div>
+    <div class="panel">
+        <div class="panel-header"><h2>📊 最近活动</h2></div>
+        <div id="activityList" class="activity-list"><div class="empty-state">暂无活动记录</div></div>
+    </div>
+</div>
+
 <!-- 日志页 -->
 <div class="page" id="page-logs">
     <div class="panel">
@@ -257,6 +310,7 @@ function switchTab(pageName) {
         });
         if (pageName === 'templates') loadTemplates();
         if (pageName === 'schedule') loadSchedules();
+        if (pageName === 'status') loadStatus();
         console.log('switchTab done:', pageName);
     } catch(e) { console.error('switchTab error:', e); }
 }
@@ -349,6 +403,8 @@ function loadDevices() {
         .catch(function(err) { console.log('加载设备失败:', err); });
 }
 
+var taskStatusList = {};
+var activityLog = [];
 function connectFrontendWS() {
     try {
         var proto = location.protocol === 'https:' ? 'wss:' : 'ws:';
@@ -359,11 +415,83 @@ function connectFrontendWS() {
                 if (data.type === 'app_devices') renderDevices(data.devices || []);
                 else if (data.type === 'log') addLog(data.message, data.level || 'info');
                 else if (data.type === 'schedule_event') addLog(data.message, 'action');
+                else if (data.type === 'task_status') handleTaskStatus(data);
             } catch(e) {}
         };
         ws.onclose = function() { setTimeout(connectFrontendWS, 3000); };
         ws.onerror = function() {};
     } catch(e) { console.log('WebSocket 连接失败:', e); }
+}
+function handleTaskStatus(data) {
+    taskStatusList[data.job_id] = data;
+    var timeStr = data.timestamp ? data.timestamp.substring(11, 19) : new Date().toLocaleTimeString();
+    var level = data.status === 'error' ? 'activity-error' : data.status === 'running' ? 'activity-running' : data.status === 'idle' || data.status === 'completed' ? 'activity-success' : 'activity-info';
+    activityLog.unshift({ time: timeStr, message: data.message || '', level: level });
+    if (activityLog.length > 50) activityLog.pop();
+    renderActivityList();
+    if (document.getElementById('page-status').classList.contains('active')) {
+        renderStatus();
+    }
+}
+function loadStatus() {
+    apiFetch('/api/schedules').then(function(r){return r.json();}).then(function(data){
+        data.schedules.forEach(function(job){
+            if (!taskStatusList[job.id]) {
+                taskStatusList[job.id] = {
+                    job_id: job.id,
+                    status: job.status,
+                    device_id: job.current_device_id,
+                    template_id: job.current_template_id,
+                    message: '',
+                    timestamp: job.last_executed_at || new Date().toISOString()
+                };
+            }
+        });
+        renderStatus();
+    });
+}
+function renderStatus() {
+    var container = document.getElementById('statusContainer');
+    var now = new Date();
+    document.getElementById('statusUpdateTime').textContent = '上次更新: ' + now.toLocaleTimeString();
+    
+    var jobs = Object.values(taskStatusList);
+    if (jobs.length === 0) {
+        container.innerHTML = '<div class="empty-state">暂无任务状态</div>';
+        return;
+    }
+    
+    var html = '';
+    var statusMap = { 'running': '运行中', 'waiting': '等待中', 'idle': '空闲', 'error': '错误', 'completed': '已完成' };
+    
+    jobs.forEach(function(s) {
+        var timeStr = s.timestamp ? s.timestamp.substring(11, 19) : '-';
+        var deviceInfo = s.device_id ? '设备: ' + s.device_id.substring(0, 8) : '';
+        html += '<div class="status-card ' + s.status + '">';
+        html += '<div class="status-header"><span class="status-title"><span class="status-dot ' + s.status + '"></span>' + (s.job_name || '任务 ' + s.job_id.substring(0, 8)) + '</span>';
+        html += '<span class="status-time">' + timeStr + ' · ' + (statusMap[s.status] || s.status) + '</span></div>';
+        html += '<div class="status-detail">' + (s.message || deviceInfo || '暂无详细信息') + '</div>';
+        if (s.status === 'running' || s.status === 'waiting') {
+            html += '<div class="status-progress"><div class="status-progress-bar" style="width:' + (Math.random() * 60 + 20) + '%"></div></div>';
+        }
+        html += '</div>';
+    });
+    
+    container.innerHTML = html;
+}
+function renderActivityList() {
+    var container = document.getElementById('activityList');
+    if (activityLog.length === 0) {
+        container.innerHTML = '<div class="empty-state">暂无活动记录</div>';
+        return;
+    }
+    
+    var html = '';
+    activityLog.forEach(function(item) {
+        html += '<div class="activity-item"><span class="activity-time">' + item.time + '</span><span class="activity-content ' + item.level + '">' + item.message + '</span></div>';
+    });
+    
+    container.innerHTML = html;
 }
 
 // ===== 单指令 =====
@@ -378,6 +506,30 @@ function sendSingleAction(action) {
     }).then(function(r){return r.json();}).then(function(data){
         addLog((data.success?'✅ 成功':'❌ 失败') + ' - ' + (data.message||action), data.success?'success':'error');
     }).catch(function(err){ addLog('请求错误: '+err,'error'); });
+}
+
+function sendSearchAction() {
+    if (!selectedDeviceId) { alert('请先选择设备'); return; }
+    var keyword = document.getElementById('searchKeyword').value.trim();
+    if (!keyword) { alert('请输入搜索关键词'); return; }
+    addLog('🔍 发送搜索指令: ' + keyword, 'action');
+    apiFetch('/api/app-devices/' + encodeURIComponent(selectedDeviceId) + '/command', {
+        method: 'POST', headers:{'Content-Type':'application/json'},
+        body: JSON.stringify({ action: 'search', platform: document.getElementById('platform').value, params: { keyword: keyword } })
+    }).then(function(r){return r.json();}).then(function(data){
+        addLog((data.success?'✅ 搜索成功':'❌ 搜索失败') + ' - ' + (data.message||keyword), data.success?'success':'error');
+    }).catch(function(err){ addLog('搜索请求错误: '+err,'error'); });
+}
+
+function sendScrollAction() {
+    if (!selectedDeviceId) { alert('请先选择设备'); return; }
+    addLog('📜 发送滚动指令', 'action');
+    apiFetch('/api/app-devices/' + encodeURIComponent(selectedDeviceId) + '/command', {
+        method: 'POST', headers:{'Content-Type':'application/json'},
+        body: JSON.stringify({ action: 'scroll', platform: document.getElementById('platform').value, params: { direction: 'up' } })
+    }).then(function(r){return r.json();}).then(function(data){
+        addLog((data.success?'✅ 滚动成功':'❌ 滚动失败') + ' - ' + (data.message||''), data.success?'success':'error');
+    }).catch(function(err){ addLog('滚动请求错误: '+err,'error'); });
 }
 
 // ===== v3 双模式 =====
@@ -487,14 +639,22 @@ function renderScheduleList(schedules){
     var container=document.getElementById('scheduleList');
     if(schedules.length===0){container.innerHTML='<div class="empty-state">暂无定时任务</div>';return;}
     var TL={once:'一次性',daily:'每日循环',interval:'间隔执行'};
+    var statusColors={running:'background:#f59e0b;color:white;',waiting:'background:#3b82f6;color:white;',idle:'background:#22c55e;color:white;',error:'background:#ef4444;color:white;',completed:'background:#8b5cf6;color:white;'};
+    var statusLabels={running:'运行中',waiting:'等待中',idle:'空闲',error:'错误',completed:'已完成'};
     var html='';
     schedules.forEach(function(job){
         var nr=job.next_run?job.next_run.substring(0,16).replace('T',' '):'-';
+        var lastResult=job.last_execution_result?' | 上次: '+job.last_execution_result:'';
         html+='<div style="border:1px solid #e0e0e0;border-radius:8px;padding:12px;margin-bottom:8px;">';
         html+='<div style="display:flex;justify-content:space-between;align-items:center;"><strong>'+job.name+'</strong>';
         html+='<span><span class="status-badge'+(job.enabled?'':' gray')+'" style="margin-right:4px;">'+(job.enabled?'启用':'禁用')+'</span>';
-        html+='<span class="status-badge" style="background:#fff3e0;color:#e65100;">'+ (TL[job.schedule_type]||job.schedule_type)+'</span></span></div>';
-        html+='<div style="font-size:12px;color:#666;margin:6px 0;">下次: <b>'+nr+'</b> | 已执行: <b>'+job.execution_count+'</b> 次</div>';
+        html+='<span class="status-badge" style="background:#fff3e0;color:#e65100;margin-right:4px;">'+ (TL[job.schedule_type]||job.schedule_type)+'</span>';
+        html+='<span class="status-badge" style="'+(statusColors[job.status]||'background:#999;color:white;')+'"><span class="status-dot '+job.status+'" style="margin-right:2px;"></span>'+(statusLabels[job.status]||job.status)+'</span></span></div>';
+        html+='<div style="font-size:12px;color:#666;margin:6px 0;">下次: <b>'+nr+'</b> | 已执行: <b>'+job.execution_count+'</b> 次'+lastResult+'</div>';
+        if(job.status==='running' || job.status==='waiting'){
+            var deviceInfo=job.current_device_id?'正在执行设备: '+job.current_device_id.substring(0,8):'';
+            html+='<div style="font-size:12px;color:#f59e0b;margin-bottom:6px;">📱 '+deviceInfo+'</div>';
+        }
         html+='<div style="display:flex;gap:4px;">';
         html+='<button class="btn btn-default" style="padding:2px 8px;font-size:11px;" onclick="editSchedule(\''+job.id+'\')">编辑</button> ';
         html+='<button class="btn btn-default" style="padding:2px 8px;font-size:11px;" onclick="toggleSchedule(\''+job.id+'\','+!job.enabled+')">'+(job.enabled?'暂停':'启用')+'</button> ';

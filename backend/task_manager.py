@@ -26,6 +26,19 @@ async def _send_event(message: str):
     from backend.api.routes import send_schedule_event
     await send_schedule_event(message)
 
+async def _send_task_status(job_id: str, status: str, device_id: str = "", template_id: str = "", message: str = ""):
+    """向前端推送任务状态更新"""
+    from backend.api.routes import send_frontend_broadcast
+    await send_frontend_broadcast({
+        "type": "task_status",
+        "job_id": job_id,
+        "status": status,
+        "device_id": device_id,
+        "template_id": template_id,
+        "message": message,
+        "timestamp": datetime.now().isoformat()
+    })
+
 
 # ============================================================
 # 操作统计类
@@ -452,6 +465,24 @@ class TaskScheduler:
             if job.max_executions > 0 and job.execution_count >= job.max_executions:
                 continue
 
+            # 检查任务是否正在运行，如果是则跳过（避免重复触发）
+            if job.status in ("running", "waiting"):
+                # 检查是否超时（超过5分钟仍在运行，可能卡住了）
+                if job.last_executed_at:
+                    last = datetime.fromisoformat(job.last_executed_at)
+                    elapsed = (now - last).total_seconds()
+                    if elapsed > 300:  # 超过5分钟
+                        logger.warning(f"⚠️ 任务 [{job.name}] 运行超时({elapsed:.0f}s)，强制重置状态")
+                        job.status = "idle"
+                        job.current_device_id = ""
+                        job.current_template_id = ""
+                        self._save()
+                    else:
+                        logger.debug(f"⏳ 任务 [{job.name}] 正在运行中，跳过本次检查")
+                        continue
+                else:
+                    continue
+
             should_execute = False
 
             try:
@@ -506,6 +537,7 @@ class TaskScheduler:
         self._save()
 
         await _send_event(f"⏰ 定时任务 [{job.name}] 开始执行")
+        await _send_task_status(job.id, "running", message=f"定时任务 [{job.name}] 开始执行")
         # 记录任务开始（设备ID在循环中逐个记录）
 
         try:
@@ -530,6 +562,7 @@ class TaskScheduler:
                 job.current_template_id = template_id
                 job.status = "waiting"
                 self._save()
+                await _send_task_status(job.id, "waiting", device_id, template_id, f"设备 [{device_id[:8]}] 准备执行任务: {tpl['name']}")
 
                 await _send_log(f"📱 设备 [{device_id[:8]}] 准备执行任务: {tpl['name']}", "action")
 
@@ -539,6 +572,7 @@ class TaskScheduler:
                 import random
                 rest_sec = random.randint(rest_before_min, rest_before_max)
                 logger.info(f"   ⏳ 设备 {device_id[:8]}... 休息 {rest_sec}s 后开始")
+                await _send_task_status(job.id, "waiting", device_id, template_id, f"设备 [{device_id[:8]}] 休息中 ({rest_sec}s)")
                 await asyncio.sleep(rest_sec)
 
                 # 发送指令给设备
@@ -605,6 +639,7 @@ class TaskScheduler:
                     # 更新状态为正在执行
                     job.status = "running"
                     self._save()
+                    await _send_task_status(job.id, "running", device_id, template_id, f"🚀 向设备 [{device_id[:8]}] 发送任务: {tpl['name']}")
 
                     logger.info(f"   🚀 向设备 {device_id[:8]} 发送任务: {tpl['name']}")
                     logger.info(f"   📋 platform: {platform}")
@@ -622,6 +657,7 @@ class TaskScheduler:
                         logger.info(f"   ✅ 设备 {device_id[:8]} 任务发送成功")
                         job.last_execution_result = "success"
                         await _send_log(f"✅ 设备 [{device_id[:8]}] 任务发送成功，正在执行...", "success")
+                        await _send_task_status(job.id, "running", device_id, template_id, f"✅ 设备 [{device_id[:8]}] 任务发送成功，等待执行完成")
                         # 记录动作日志
                         action_logger.log_action(
                             device_id=device_id,
@@ -649,6 +685,7 @@ class TaskScheduler:
                         msg = result.message if hasattr(result, 'message') else str(result)
                         logger.warning(f"   ⚠️ 设备 {device_id[:8]} 任务发送失败: {msg}")
                         job.last_execution_result = f"failed: {msg}"
+                        await _send_task_status(job.id, "error", device_id, template_id, f"❌ 设备 [{device_id[:8]}] 任务发送失败: {msg}")
                         # 记录动作日志
                         action_logger.log_action(
                             device_id=device_id,
@@ -672,11 +709,13 @@ class TaskScheduler:
             job.status = "idle"
             job.current_device_id = ""
             job.current_template_id = ""
+            await _send_task_status(job.id, "idle", message=f"✅ 定时任务 [{job.name}] 执行完成")
 
             # 检查是否完成
             if job.max_executions > 0 and job.execution_count >= job.max_executions:
                 job.status = "completed"
                 logger.info(f"✅ 定时任务 [{job.name}] 已完成全部 {job.max_executions} 次执行")
+                await _send_task_status(job.id, "completed", message=f"🎉 定时任务 [{job.name}] 已完成全部 {job.max_executions} 次执行")
 
         except Exception as e:
             job.status = "error"
@@ -684,6 +723,7 @@ class TaskScheduler:
             job.current_device_id = ""
             job.current_template_id = ""
             logger.error(f"❌ 定时任务 [{job.name}] 执行异常: {e}")
+            await _send_task_status(job.id, "error", message=f"❌ 定时任务 [{job.name}] 执行异常: {str(e)}")
         finally:
             job.updated_at = datetime.now().isoformat()
             self._save()
@@ -695,6 +735,25 @@ class TaskScheduler:
             return False
         await self._execute_job(job)
         return True
+
+    async def reset_tasks_for_device(self, device_id: str):
+        """当设备断开连接时，重置所有与该设备相关的正在执行的任务"""
+        reset_count = 0
+        for jid, job in list(self._jobs.items()):
+            if job.status in ("running", "waiting") and job.current_device_id == device_id:
+                logger.warning(f"⚠️ 设备 [{device_id[:8]}] 断开连接，重置任务 [{job.name}] 状态")
+                job.status = "idle"
+                job.current_device_id = ""
+                job.current_template_id = ""
+                job.last_execution_result = "failed: Device disconnected"
+                job.updated_at = datetime.now().isoformat()
+                reset_count += 1
+                await _send_task_status(job.id, "idle", message=f"⚠️ 设备断开连接，任务 [{job.name}] 已取消")
+
+        if reset_count > 0:
+            self._save()
+            logger.info(f"📊 共重置 {reset_count} 个任务")
+        return reset_count
 
 
 # ============================================================

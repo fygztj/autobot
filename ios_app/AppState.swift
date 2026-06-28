@@ -244,7 +244,15 @@ class AppState: ObservableObject {
         let platform = message["platform"] as? String ?? ""
         let params = message["params"] as? [String: Any] ?? [:]
 
-        log("🎯 收到指令: action=\(action), platform=\(platform)")
+        var paramsStr = ""
+        for (key, value) in params {
+            paramsStr += "\(key)=\(value), "
+        }
+        if !paramsStr.isEmpty {
+            paramsStr = paramsStr.dropLast(2).description
+        }
+
+        log("🎯 收到指令: action=\(action), platform=\(platform), params=[\(paramsStr)]")
 
         // 触发 ContentView 切换到浏览器 Tab
         shouldOpenBrowser = true
@@ -300,6 +308,14 @@ class AppState: ObservableObject {
 
         case "collect":
             try await actionCollect(platform)
+
+        case "search":
+            if let keyword = params["keyword"] as? String {
+                try await actionSearch(platform: platform, keyword: keyword)
+            } else {
+                throw NSError(domain: "AutoBot", code: -1,
+                             userInfo: [NSLocalizedDescriptionKey: "缺少搜索关键词"])
+            }
 
         case "comment":
             let text = params["text"] as? String ?? "很棒！"
@@ -423,6 +439,67 @@ class AppState: ObservableObject {
         }
 
         log("⏰ 页面加载超时（可能需要手动登录或网络问题），继续执行")
+    }
+
+    private func actionSearch(platform: String, keyword: String) async throws {
+        log("🔍 搜索: keyword=\(keyword)")
+        
+        var searchSuccess = false
+        
+        for attempt in 0..<3 {
+            if attempt > 0 {
+                log("   └ 重试 #\(attempt)...")
+            }
+            
+            let clickResult = try await evaluateJS(AutomationScripts.clickSearchEntryScript())
+            if let success = clickResult.raw["success"] as? Bool, success {
+                log("   └ \(clickResult.message)")
+                if let tag = clickResult.raw["clickedTag"] as? String {
+                    let cls = clickResult.raw["clickedClass"] as? String ?? ""
+                    log("      ├ 点击元素: <\(tag)> class=\(cls)")
+                }
+            } else {
+                log("   ❌ \(clickResult.message)")
+                try? await Task.sleep(nanoseconds: 1_000_000_000)
+                continue
+            }
+            
+            try? await Task.sleep(nanoseconds: 3_000_000_000)
+            
+            let inputResult = try await evaluateJS(AutomationScripts.inputSearchKeywordScript(keyword: keyword))
+            if let success = inputResult.raw["success"] as? Bool, success {
+                log("   └ \(inputResult.message)")
+                searchSuccess = true
+                break
+            } else {
+                log("   └ \(inputResult.message)")
+                if let debug = inputResult.raw["debug"] as? [[String: Any]] {
+                    for (di, d) in debug.enumerated() {
+                        let tag = d["tag"] as? String ?? ""
+                        let ph = d["placeholder"] as? String ?? ""
+                        let score = d["score"] as? Int ?? 0
+                        let top = d["top"] as? Int ?? 0
+                        let w = d["w"] as? Int ?? 0
+                        log("      ├ 输入\(di+1): <\(tag)> ph='\(ph)' score=\(score) top=\(top) w=\(w)")
+                    }
+                }
+            }
+        }
+        
+        try? await Task.sleep(nanoseconds: 4_000_000_000)
+        
+        let urlResult = try? await evaluateJS("(function(){return JSON.stringify({url:location.href, title:document.title});})()")
+        if let url = urlResult?.raw["url"] as? String {
+            log("🌐 当前页面: \(url.prefix(100))")
+            if url.contains("search_result") || url.contains("search") {
+                log("✅ 搜索成功！")
+                searchSuccess = true
+            }
+        }
+        
+        if !searchSuccess {
+            log("⚠️ 自动搜索可能未生效，请尝试手动点击搜索框测试")
+        }
     }
 
     private func actionScroll(direction: String, count: Int = 1) async throws {
@@ -592,21 +669,13 @@ class AppState: ObservableObject {
                 let keyword = nurture.searchKeywords[keywordIndex % nurture.searchKeywords.count]
                 log("   🔍 [关键词 \(keywordIndex + 1)/\(nurture.searchKeywords.count)] 搜索: \(keyword)")
 
-                // 执行搜索
-                log("      📡 正在执行搜索脚本...")
-                let searchResult = try? await evaluateJS(AutomationScripts.searchScript(keyword: keyword))
-                if let success = searchResult?.raw["success"] as? Bool, success {
-                    log("      🔎 搜索脚本执行成功")
-                } else {
-                    log("      ⚠️ 搜索脚本执行失败")
+                do {
+                    try await actionSearch(platform: platform, keyword: keyword)
+                } catch {
+                    log("      ⚠️ 搜索失败: \(error.localizedDescription)")
                 }
                 // 等待页面加载完成
-                try? await Task.sleep(nanoseconds: 5_000_000_000)
-                // 检查当前页面URL
-                let urlResult = try? await evaluateJS("(function(){return JSON.stringify({url:location.href});})()")
-                if let url = urlResult?.raw["url"] as? String {
-                    log("      🌐 当前页面: \(url.prefix(80))")
-                }
+                try? await Task.sleep(nanoseconds: 3_000_000_000)
 
                 // 在当前搜索结果中持续浏览，直到超时或切换关键词
                 var timeInKeyword = 0.0
